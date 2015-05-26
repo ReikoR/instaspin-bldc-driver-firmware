@@ -53,7 +53,7 @@
 
 
 // platforms
-#include "modules/fast/userParams.h"
+#include "modules/fast/src/userParams.h"
 
 //!
 //!
@@ -339,6 +339,7 @@ extern "C" {
 #define Bodine_34B3FEBL             114
 #define Pittman_elcom_5233B599      115
 #define medical_instrument          117
+#define multistar_4108_380kv        118
 
 // IPM motors
 // If user provides separate Ls-d, Ls-q
@@ -354,7 +355,7 @@ extern "C" {
 //! \brief These motor ID settings and motor parameters are then available to be used by the control system
 //! \brief Once your ideal settings and parameters are identified update the motor section here so it is available in the binary code
 //#define USER_MOTOR Estun_EMJ_04APB22
-#define USER_MOTOR Anaheim_BLY172S
+//#define USER_MOTOR Anaheim_BLY172S
 //#define USER_MOTOR hobby_3p5T
 //#define USER_MOTOR hobby_4p5T
 //#define USER_MOTOR My_Motor
@@ -369,6 +370,7 @@ extern "C" {
 //#define USER_MOTOR medical_instrument
 //#define USER_MOTOR Kinetek_YDQ1p3_4
 //#define USER_MOTOR LPKF_CAD_CAM
+#define USER_MOTOR multistar_4108_380kv
 
 
 #if (USER_MOTOR == Estun_EMJ_04APB22)                  // Name must match the motor #define
@@ -595,6 +597,19 @@ extern "C" {
 #define USER_MOTOR_MAX_CURRENT          (5.0)
 #define USER_MOTOR_FLUX_EST_FREQ_Hz     (20.0)
 
+#elif (USER_MOTOR == multistar_4108_380kv)
+#define USER_MOTOR_TYPE                 MOTOR_Type_Pm
+#define USER_MOTOR_NUM_POLE_PAIRS       (11)
+#define USER_MOTOR_Rr                   (NULL)
+#define USER_MOTOR_Rs                   (0.1037551)
+#define USER_MOTOR_Ls_d                 (1.574909e-05)
+#define USER_MOTOR_Ls_q                 (1.574909e-05)
+#define USER_MOTOR_RATED_FLUX           (0.008228808)
+#define USER_MOTOR_MAGNETIZING_CURRENT  (NULL)
+#define USER_MOTOR_RES_EST_CURRENT      (1.0)
+#define USER_MOTOR_IND_EST_CURRENT      (-1.0)
+#define USER_MOTOR_MAX_CURRENT          (5.0)
+#define USER_MOTOR_FLUX_EST_FREQ_Hz     (200.0)
 
 #else
 #error No motor type specified
