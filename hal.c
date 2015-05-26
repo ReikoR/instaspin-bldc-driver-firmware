@@ -995,16 +995,19 @@ void HAL_setupGpios(HAL_Handle handle)
   // SPI_SCS
   GPIO_setMode(obj->gpioHandle,GPIO_Number_19,GPIO_19_Mode_SPISTEA_NOT);
 
+  // RX
+  GPIO_setPullUp(obj->gpioHandle, GPIO_Number_28, GPIO_PullUp_Enable);
+  GPIO_setQualification(obj->gpioHandle, GPIO_Number_28, GPIO_Qual_ASync);
+  GPIO_setMode(obj->gpioHandle,GPIO_Number_28,GPIO_28_Mode_SCIRXDA);
+
+  // TX
+  GPIO_setPullUp(obj->gpioHandle, GPIO_Number_29, GPIO_PullUp_Enable);
+  GPIO_setMode(obj->gpioHandle,GPIO_Number_29,GPIO_29_Mode_SCITXDA);
+
   // FAULTn
-  GPIO_setMode(obj->gpioHandle,GPIO_Number_28,GPIO_28_Mode_TZ2_NOT);
-
-  // OCTWn
-  GPIO_setMode(obj->gpioHandle,GPIO_Number_29,GPIO_29_Mode_TZ3_NOT);
-
-  // SPI_SDI if JP5 is soldered, No Connection if JP5 is not soldered
   GPIO_setMode(obj->gpioHandle,GPIO_Number_32,GPIO_32_Mode_GeneralPurpose);
 
-  // SPI_SDO if JP7 is soldered, No Connection if JP7 is not soldered
+  // OCTWn
   GPIO_setMode(obj->gpioHandle,GPIO_Number_33,GPIO_33_Mode_GeneralPurpose);
 
   // No Connection
