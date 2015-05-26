@@ -122,16 +122,16 @@ extern "C" {
 //! \brief ADC current offsets for A, B, and C phases
 //! \brief One-time hardware dependent, though the calibration can be done at run-time as well
 //! \brief After initial board calibration these values should be updated for your specific hardware so they are available after compile in the binary to be loaded to the controller
-#define   I_A_offset    (0.839922905)
-#define   I_B_offset    (0.84156394)
-#define   I_C_offset    (0.8358885646)
+#define   I_A_offset    (0.8200919628)
+#define   I_B_offset    (0.8180496097)
+#define   I_C_offset    (0.8226171136)
 
 //! \brief ADC voltage offsets for A, B, and C phases
 //! \brief One-time hardware dependent, though the calibration can be done at run-time as well
 //! \brief After initial board calibration these values should be updated for your specific hardware so they are available after compile in the binary to be loaded to the controller
-#define   V_A_offset    (0.4941458106)
-#define   V_B_offset    (0.4941235185)
-#define   V_C_offset    (0.4918507934)
+#define   V_A_offset    (0.3347041011)
+#define   V_B_offset    (0.3332309127)
+#define   V_C_offset    (0.3335901499)
 
 
 //! \brief CLOCKS & TIMERS
