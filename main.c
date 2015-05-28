@@ -48,6 +48,7 @@
 // system includes
 #include <math.h>
 #include "main.h"
+#include "drivers/sci/sci.h"
 
 #ifdef FLASH
 #pragma CODE_SECTION(mainISR,"ramfuncs");
@@ -93,6 +94,8 @@ SVGEN_Obj       svgen;                        //!< the space vector generator ob
 
 HAL_Handle halHandle;
 
+SCI_Handle sciHandle;
+
 USER_Params gUserParams;
 
 HAL_PwmData_t gPwmData = {_IQ(0.0), _IQ(0.0), _IQ(0.0)};
@@ -129,6 +132,11 @@ _iq gFlux_pu_to_VpHz_sf;
 _iq gTorque_Ls_Id_Iq_pu_to_Nm_sf;
 
 _iq gTorque_Flux_Iq_pu_to_Nm_sf;
+
+char buf[16];
+int counter = 0;
+
+void scia_init(void);
 
 // **************************************************************************
 // the functions
@@ -258,6 +266,8 @@ void main(void)
   // disable the PWM
   HAL_disablePwm(halHandle);
 
+  scia_init();
+
 
 #ifdef DRV8301_SPI
   // turn on the DRV8301 if present
@@ -289,6 +299,26 @@ void main(void)
     // loop while the enable system flag is true
     while(gMotorVars.Flag_enableSys)
     {
+
+		if (SCI_getRxFifoStatus(sciHandle)) {
+			char rev_data = SCI_read(sciHandle);
+
+			if (rev_data == '\n') {
+				buf[counter] = '\0';
+				counter = 0;
+				//CTRL_setSpd_ref_krpm(ctrlHandle, _atoIQ(buf));
+				gMotorVars.SpeedRef_krpm = _atoIQ(buf);
+			} else {
+				buf[counter] = rev_data;
+				counter++;
+			}
+
+			/*if (SCI_txReady(sciHandle)) {
+				SCI_write(sciHandle, rev_data);
+				//SCI_putDataNonBlocking(sciHandle, rev_data);
+			}*/
+		}
+
       CTRL_Obj *obj = (CTRL_Obj *)ctrlHandle;
 
       // increment counters
@@ -716,6 +746,51 @@ void updateKpKiGains(CTRL_Handle handle)
   return;
 } // end of updateKpKiGains() function
 
+interrupt void SCI_RX_ISR(void) {
+  char rev_data = 0 ;
+  if (SCI_rxDataReady(sciHandle) == 1) {
+    rev_data = SCI_read(sciHandle);
+  }
+  SCI_clearRxFifoOvf(sciHandle);
+  SCI_clearRxFifoInt(sciHandle);
+
+  PIE_clearInt(halHandle->pieHandle, PIE_GroupNumber_9);
+}
+
+void scia_init() {
+	sciHandle = SCI_init((void *) SCIA_BASE_ADDR, sizeof(SCI_Obj));
+
+	SCI_setNumStopBits(sciHandle, SCI_NumStopBits_One);
+	SCI_disableParity(sciHandle);
+	SCI_disableLoopBack(sciHandle);
+	SCI_setCharLength(sciHandle, SCI_CharLength_8_Bits);
+	SCI_setMode(sciHandle, SCI_Mode_IdleLine);
+	//SCI_setPriority(sciHandle, SCI_Priority_FreeRun);
+
+	SCI_disableRxErrorInt(sciHandle);
+	SCI_disable(sciHandle);
+	SCI_disableTxWake(sciHandle);
+	SCI_disableSleep(sciHandle);
+	SCI_enableRx(sciHandle);
+	SCI_enableTx(sciHandle);
+	SCI_enableTxFifo(sciHandle);
+	SCI_enableTxFifoEnh(sciHandle);
+
+	SCI_enableRxInt(sciHandle);
+	SCI_enableTxInt(sciHandle);
+
+	SCI_setBaudRate(sciHandle, 780);
+
+	halHandle->pieHandle->SCIRXINTA = &SCI_RX_ISR;
+
+	SCI_enable(sciHandle);
+
+    // enable SCI interrupt
+    PIE_enableInt(halHandle->pieHandle, PIE_GroupNumber_9, PIE_InterruptSource_SCIARX);
+
+    // enable CPU interrupt
+    CPU_enableInt(halHandle->cpuHandle, CPU_IntNumber_9);
+}
 
 //@} //defgroup
 // end of file
