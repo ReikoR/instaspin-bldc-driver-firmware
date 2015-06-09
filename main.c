@@ -49,6 +49,8 @@
 #include <math.h>
 #include "main.h"
 #include "drivers/sci/sci.h"
+//#include "modules/usDelay/usDelay.h"
+
 
 #ifdef FLASH
 #pragma CODE_SECTION(mainISR,"ramfuncs");
@@ -66,6 +68,8 @@
 
 // **************************************************************************
 // the globals
+
+uint32_t boardId = '1';
 
 uint_least16_t gCounter_updateGlobals = 0;
 
@@ -288,6 +292,11 @@ void main(void)
   gTorque_Flux_Iq_pu_to_Nm_sf = USER_computeTorque_Flux_Iq_pu_to_Nm_sf();
 
 
+
+  gMotorVars.Kp_spd = _IQ(4.0);
+  gMotorVars.MaxAccel_krpmps = _IQ(10.0);
+  gMotorVars.Flag_enableSys = 1;
+
   for(;;)
   {
     // Waiting for enable system flag to be set
@@ -307,17 +316,37 @@ void main(void)
 				buf[counter] = '\0';
 				counter = 0;
 				//CTRL_setSpd_ref_krpm(ctrlHandle, _atoIQ(buf));
-				gMotorVars.SpeedRef_krpm = _atoIQ(buf);
+				if (buf[0] == boardId && buf[1] == 's') {
+					gMotorVars.SpeedRef_krpm = _atoIQ(buf + 2);
+					gMotorVars.Flag_Run_Identify = 1;
+
+				}
 			} else {
 				buf[counter] = rev_data;
 				counter++;
+
+				if (counter == 16) {
+					counter = 0;
+				}
 			}
 
 			/*if (SCI_txReady(sciHandle)) {
+				usDelay(5000);
+				GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_12);
+				usDelay(5000);
 				SCI_write(sciHandle, rev_data);
 				//SCI_putDataNonBlocking(sciHandle, rev_data);
+				usDelay(5000);
+				GPIO_setLow(halHandle->gpioHandle,GPIO_Number_12);
+				usDelay(5000);
 			}*/
 		}
+
+    	/*GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_12);
+
+		if (SCI_txReady(sciHandle)) {
+			SCI_write(sciHandle, '3');
+		}*/
 
       CTRL_Obj *obj = (CTRL_Obj *)ctrlHandle;
 
@@ -437,7 +466,7 @@ void main(void)
           gMotorVars.Ki_Idq = CTRL_getKi(ctrlHandle,CTRL_Type_PID_Id);
 
           // initialize the watch window kp and ki values with pre-calculated values
-          gMotorVars.Kp_spd = CTRL_getKp(ctrlHandle,CTRL_Type_PID_spd);
+          //gMotorVars.Kp_spd = CTRL_getKp(ctrlHandle,CTRL_Type_PID_spd);
           gMotorVars.Ki_spd = CTRL_getKi(ctrlHandle,CTRL_Type_PID_spd);
         }
 
@@ -766,6 +795,7 @@ void scia_init() {
 	SCI_setCharLength(sciHandle, SCI_CharLength_8_Bits);
 	SCI_setMode(sciHandle, SCI_Mode_IdleLine);
 	//SCI_setPriority(sciHandle, SCI_Priority_FreeRun);
+	//SCI_setTxDelay(sciHandle, 255);
 
 	SCI_disableRxErrorInt(sciHandle);
 	SCI_disable(sciHandle);
