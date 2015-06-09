@@ -978,10 +978,11 @@ void HAL_setupGpios(HAL_Handle handle)
   // DC_CAL
   GPIO_setMode(obj->gpioHandle,GPIO_Number_7,GPIO_7_Mode_GeneralPurpose);
 
-  // No Connection
+  // RE RS485
   GPIO_setMode(obj->gpioHandle,GPIO_Number_12,GPIO_12_Mode_GeneralPurpose);
-  GPIO_setDirection(obj->gpioHandle,GPIO_Number_12,GPIO_Direction_Input);
-  GPIO_setPullUp(obj->gpioHandle,GPIO_Number_12,GPIO_PullUp_Disable);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_12,GPIO_Direction_Output);
+  GPIO_setLow(obj->gpioHandle,GPIO_Number_12);
+  //GPIO_setPullUp(obj->gpioHandle,GPIO_Number_12,GPIO_PullUp_Disable);
 
   // SPI_SDI if JP4 is soldered, No Connection if JP4 is not soldered
   GPIO_setMode(obj->gpioHandle,GPIO_Number_16,GPIO_16_Mode_SPISIMOA);
