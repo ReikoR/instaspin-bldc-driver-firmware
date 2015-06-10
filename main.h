@@ -49,19 +49,29 @@
 #include "modules/fem/fem.h"
 #include "modules/cpu_usage/cpu_usage.h"
 
-
-// drivers
-
-
 // platforms
 #include "modules/ctrl/ctrl.h"
 #include "hal.h"
 #include "user.h"
 
+//C Standard libs
+#include <string.h>
+#include <stdlib.h>
 
 // **************************************************************************
 // the defines
 
+#define SET_SPEED 1
+#define GET_SPEED 2
+#define SET_ACCEL 3
+#define ENABLE_SYS 4
+#define DISABLE_SYS 5
+#define GET_ID 6
+#define AUTO_STOP_ON 7
+#define AUTO_STOP_OFF 8
+
+#define UART_REPLY_ISR (int)150
+#define AUTO_STOP_ISR (int)24000
 
 //! \brief Defines the number of main iterations before global variables are updated
 //!
@@ -281,6 +291,12 @@ void setupClarke_I(CLARKE_Handle,const uint_least8_t);
 //! \brief     Sets up the Clarke transform for voltage
 //!
 void setupClarke_V(CLARKE_Handle,const uint_least8_t);
+
+
+void parseCommand(char*);
+
+
+_iq getCmdValue(char*);
 
 
 //@} //defgroup
