@@ -601,9 +601,9 @@ extern "C" {
 #define USER_MOTOR_TYPE                 MOTOR_Type_Pm
 #define USER_MOTOR_NUM_POLE_PAIRS       (11)
 #define USER_MOTOR_Rr                   (NULL)
-#define USER_MOTOR_Rs                   (0.105) //0.1037551
-#define USER_MOTOR_Ls_d                 (1.9e-05) //1.574909e-05
-#define USER_MOTOR_Ls_q                 (1.9e-05) //1.574909e-05
+#define USER_MOTOR_Rs                   (0.1037551) //0.1037551
+#define USER_MOTOR_Ls_d                 (1.574909e-05) //1.574909e-05
+#define USER_MOTOR_Ls_q                 (1.574909e-05) //1.574909e-05
 #define USER_MOTOR_RATED_FLUX           (0.008228808)
 #define USER_MOTOR_MAGNETIZING_CURRENT  (NULL)
 #define USER_MOTOR_RES_EST_CURRENT      (1.0)

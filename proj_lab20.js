@@ -35,3 +35,5 @@ expAdd ("gMotorVars.Ki_Idq", getQValue(24));
 expAdd ("gMotorVars.VdcBus_kV", getQValue(24));
 
 expAdd ("gDrvSpi8301Vars");
+expAdd ("buf")
+expAdd ("counter")
