@@ -190,6 +190,13 @@ typedef enum
 } GPIO_Mode_e;
 
 
+typedef enum
+{
+  AIO_Enabled=0,
+  AIO_Disabled
+} AIO_Mode_e;
+
+
 //! \brief Enumeration to define the general purpose I/O (GPIO) directions
 //!
 typedef enum
@@ -274,6 +281,16 @@ typedef enum
   GPIO_numGpios
 } GPIO_Number_e;
 
+typedef enum
+{
+  AIO_Number_2=2,    //!< Denotes AIO number 2
+  AIO_Number_4=4,    //!< Denotes AIO number 4
+  AIO_Number_6=6,    //!< Denotes AIO number 6
+  AIO_Number_10=10,    //!< Denotes AIO number 10
+  AIO_Number_12=12,    //!< Denotes AIO number 12
+  AIO_Number_14=14    //!< Denotes AIO number 14
+} AIO_Number_e;
+
 
 //! \brief Defines the General Purpose I/O (GPIO) object
 //!
@@ -357,6 +374,7 @@ extern GPIO_Handle GPIO_init(void *pMemory,const size_t numBytes);
 //! \param[in] direction   The signal direction
 extern void GPIO_setDirection(GPIO_Handle gpioHandle,const GPIO_Number_e gpioNumber,const GPIO_Direction_e direction);
 
+extern void AIO_setDirection(GPIO_Handle gpioHandle,const AIO_Number_e aioNumber,const GPIO_Direction_e direction);
 
 //! \brief     Sets the general purpose I/O (GPIO) pullup disable
 //! \param[in] gpioHandle  The general purpose I/O (GPIO) object handle
@@ -377,12 +395,16 @@ extern void GPIO_setExtInt(GPIO_Handle gpioHandle,const GPIO_Number_e gpioNumber
 //! \param[in] gpioNumber  The GPIO number
 extern void GPIO_setLow(GPIO_Handle gpioHandle,const GPIO_Number_e gpioNumber);
 
+extern void AIO_setLow(GPIO_Handle gpioHandle,const AIO_Number_e aioNumber);
+
 
 //! \brief     Sets the mode for the specified general purpose I/O (GPIO) signal
 //! \param[in] gpioHandle  The general purpose I/O (GPIO) object handle
 //! \param[in] gpioNumber  The GPIO number
 //! \param[in] mode        The mode
 extern void GPIO_setMode(GPIO_Handle gpioHandle,const GPIO_Number_e gpioNumber,const GPIO_Mode_e mode);
+
+extern void AIO_setMode(GPIO_Handle gpioHandle,const AIO_Number_e aioNumber,const AIO_Mode_e mode);
 
 
 //! \brief     Reads the specified general purpose I/O (GPIO)
@@ -391,11 +413,15 @@ extern void GPIO_setMode(GPIO_Handle gpioHandle,const GPIO_Number_e gpioNumber,c
 //! \return    The general purpose I/O (GPIO) state, HIGH or LOW
 extern bool GPIO_read(GPIO_Handle gpioHandle,const GPIO_Number_e gpioNumber);
 
+extern bool AIO_read(GPIO_Handle gpioHandle,const AIO_Number_e aioNumber);
+
 
 //! \brief     Sets the specified general purpose I/O (GPIO) signal high
 //! \param[in] gpioHandle  The general purpose I/O (GPIO) object handle
 //! \param[in] gpioNumber  The GPIO number
 extern void GPIO_setHigh(GPIO_Handle gpioHandle,const GPIO_Number_e gpioNumber);
+
+extern void AIO_setHigh(GPIO_Handle gpioHandle,const AIO_Number_e aioNumber);
 
 
 //! \brief     Sets data output on a given GPIO port
@@ -423,6 +449,8 @@ extern void GPIO_setQualificationPeriod(GPIO_Handle gpioHandle, const GPIO_Numbe
 //! \param[in] gpioHandle  The general purpose I/O (GPIO) object handle
 //! \param[in] gpioNumber  The GPIO number
 extern void GPIO_toggle(GPIO_Handle gpioHandle,const GPIO_Number_e gpioNumber);
+
+extern void AIO_toggle(GPIO_Handle gpioHandle,const AIO_Number_e aioNumber);
 
 
 //! \brief     Selects a gpio pin to wake up device from STANDBY and HALT LPM
