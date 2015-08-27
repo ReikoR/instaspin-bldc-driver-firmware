@@ -1020,6 +1020,21 @@ void HAL_setupGpios(HAL_Handle handle)
   GPIO_setMode(obj->gpioHandle,GPIO_Number_37,GPIO_37_Mode_JTAG_TDO);
   GPIO_setMode(obj->gpioHandle,GPIO_Number_38,GPIO_38_Mode_JTAG_TCK);
 
+  // AIO
+  /*AIO_setMode(obj->gpioHandle,AIO_Number_4,AIO_Enabled);
+  AIO_setMode(obj->gpioHandle,AIO_Number_6,AIO_Enabled);
+
+  AIO_setDirection(obj->gpioHandle,AIO_Number_4,GPIO_Direction_Output);
+  AIO_setDirection(obj->gpioHandle,AIO_Number_6,GPIO_Direction_Output);
+
+  AIO_setLow(obj->gpioHandle,AIO_Number_4);
+  AIO_setHigh(obj->gpioHandle,AIO_Number_6);*/
+
+  // DE RS485
+  AIO_setMode(obj->gpioHandle,AIO_Number_6,AIO_Enabled);
+  AIO_setDirection(obj->gpioHandle,AIO_Number_6,GPIO_Direction_Output);
+  AIO_setLow(obj->gpioHandle,AIO_Number_6);
+
   return;
 }  // end of HAL_setupGpios() function
 

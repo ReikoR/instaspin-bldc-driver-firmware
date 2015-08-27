@@ -158,6 +158,7 @@ typedef enum
 // the globals
 
 extern interrupt void mainISR(void);
+extern interrupt void SCI_RX_ISR(void);
 
 
 // **************************************************************************
@@ -470,6 +471,7 @@ static inline void HAL_initIntVectorTable(HAL_Handle handle)
   ENABLE_PROTECTED_REGISTER_WRITE_MODE;
 
   pie->ADCINT1 = &mainISR;
+  pie->SCIRXINTA = &SCI_RX_ISR;
 
   DISABLE_PROTECTED_REGISTER_WRITE_MODE;
 

@@ -48,12 +48,14 @@
 // system includes
 #include <math.h>
 #include "main.h"
+#include <string.h>
 #include "drivers/sci/sci.h"
 //#include "modules/usDelay/usDelay.h"
 
 
 #ifdef FLASH
 #pragma CODE_SECTION(mainISR,"ramfuncs");
+#pragma CODE_SECTION(SCI_RX_ISR,"ramfuncs");
 #endif
 
 // Include header files used in the main function
@@ -69,7 +71,7 @@
 // **************************************************************************
 // the globals
 
-uint32_t boardId = '1';
+uint32_t boardId = '4';
 
 uint_least16_t gCounter_updateGlobals = 0;
 
@@ -138,9 +140,23 @@ _iq gTorque_Ls_Id_Iq_pu_to_Nm_sf;
 _iq gTorque_Flux_Iq_pu_to_Nm_sf;
 
 char buf[16];
+char returnBuf[32];
 int counter = 0;
+int rxIntCounter = 0;
+int commandReceived = 0;
+int commandStart = 0;
+
+int isWaitingTxFifoEmpty = 0;
+int txOffDelayCount = 10; // 1 count = 66.667us, 15 counts = 1ms
+int txOffDelayCounter = 0;
+int txOffDelayActive = 0;
+int setTxOff = 0;
+
+//uint32_t slowCount = 30000; // 2s
+//uint32_t slowCounter = 0;
 
 void scia_init(void);
+void serialWrite(char *sendData, int length);
 
 // **************************************************************************
 // the functions
@@ -309,7 +325,79 @@ void main(void)
     while(gMotorVars.Flag_enableSys)
     {
 
-		if (SCI_getRxFifoStatus(sciHandle)) {
+    	if (isWaitingTxFifoEmpty && SCI_getRxFifoStatus(sciHandle) == SCI_FifoStatus_Empty) {
+    	//if (isWaitingTxFifoEmpty && SCI_txReady(sciHandle)) {
+    		isWaitingTxFifoEmpty = 0;
+    		txOffDelayActive = 1;
+    	}
+
+    	if (setTxOff) {
+    		setTxOff = 0;
+    		//GPIO_setLow(halHandle->gpioHandle,GPIO_Number_12);
+    		AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
+    	}
+
+    	//if (commandReceived) {
+    	if (counter == 8) {
+    		commandReceived = 0;
+
+    		//SerialCommand cmd;
+
+    		//memcpy(&cmd, buf + commandStart, 6);
+
+    		//if (cmd.id == boardId && cmd.type == 's') {
+    		if (buf[1] == boardId && buf[2] == 's') {
+    			long value = ((long)buf[3]) | ((long)buf[4] << 8) | ((long)buf[5] << 16) | ((long)buf[6] << 24);
+
+				gMotorVars.SpeedRef_krpm = value;
+				gMotorVars.Flag_Run_Identify = 1;
+
+				returnBuf[0] = '<';
+				returnBuf[1] = boardId;
+				returnBuf[2] = 'd';
+
+				long returnValue = gMotorVars.Speed_krpm;
+
+				returnBuf[3] = returnValue;
+				returnBuf[4] = returnValue >> 8;
+				returnBuf[5] = returnValue >> 16;
+				returnBuf[6] = returnValue >> 24;
+				returnBuf[7] = '>';
+
+				serialWrite(returnBuf, 8);
+
+				//_IQtoa(returnBuf + 2, "%3.5f", gMotorVars.Speed_krpm);
+				//int n = strlen(returnBuf);
+				//returnBuf[n] = '\n';
+				//serialWrite(returnBuf, n + 1);
+
+				//long * intlocation = (long*)(&returnBuf[2]);
+				//*intlocation = gMotorVars.SpeedRef_krpm;
+				//*intlocation = 287392129l;
+			}
+
+    		/*if (buf[commandStart] == boardId && buf[commandStart + 1] == 's') {
+				gMotorVars.SpeedRef_krpm = _atoIQ(buf + commandStart + 2);
+				gMotorVars.Flag_Run_Identify = 1;
+
+				returnBuf[0] = boardId;
+				returnBuf[1] = 's';
+				_IQtoa(returnBuf + 2, "%3.5f", gMotorVars.Speed_krpm);
+				int n = strlen(returnBuf);
+				returnBuf[n] = '\n';
+				serialWrite(returnBuf, n + 1);
+			}*/
+
+    		commandStart = 0;
+    		counter = 0;
+    	}
+
+    	/*if (SCI_txReady(sciHandle)) {
+			SCI_write(sciHandle, 'a');
+
+		}*/
+
+		/*while (SCI_getRxFifoStatus(sciHandle)) {
 			char rev_data = SCI_read(sciHandle);
 
 			if (rev_data == '\n') {
@@ -320,6 +408,12 @@ void main(void)
 					gMotorVars.SpeedRef_krpm = _atoIQ(buf + 2);
 					gMotorVars.Flag_Run_Identify = 1;
 
+					returnBuf[0] = boardId;
+					returnBuf[1] = 's';
+					_IQtoa(returnBuf + 2, "%3.5f", gMotorVars.Speed_krpm);
+					int n = strlen(returnBuf);
+					returnBuf[n] = '\n';
+					serialWrite(returnBuf, n + 1);
 				}
 			} else {
 				buf[counter] = rev_data;
@@ -330,7 +424,7 @@ void main(void)
 				}
 			}
 
-			/*if (SCI_txReady(sciHandle)) {
+			if (SCI_txReady(sciHandle)) {
 				usDelay(5000);
 				GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_12);
 				usDelay(5000);
@@ -339,12 +433,12 @@ void main(void)
 				usDelay(5000);
 				GPIO_setLow(halHandle->gpioHandle,GPIO_Number_12);
 				usDelay(5000);
-			}*/
-		}
+			}
+		}*/
 
-    	/*GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_12);
+    	//GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_12);
 
-		if (SCI_txReady(sciHandle)) {
+		/*if (SCI_txReady(sciHandle)) {
 			SCI_write(sciHandle, '3');
 		}*/
 
@@ -533,7 +627,6 @@ interrupt void mainISR(void)
   MATH_vec2 Vab_out_pu;
   MATH_vec2 phasor;
 
-
   // toggle status LED
   if(gLEDcnt++ > (uint_least32_t)(USER_ISR_FREQ_Hz / LED_BLINK_FREQ_Hz))
   {
@@ -541,6 +634,11 @@ interrupt void mainISR(void)
     gLEDcnt = 0;
   }
 
+  /*if (slowCounter++ > slowCount) {
+	  slowCounter = 0;
+	  AIO_toggle(halHandle->gpioHandle,AIO_Number_4);
+	  AIO_toggle(halHandle->gpioHandle,AIO_Number_6);
+  }*/
 
   // acknowledge the ADC interrupt
   HAL_acqAdcInt(halHandle,ADC_IntNumber_1);
@@ -650,6 +748,15 @@ interrupt void mainISR(void)
   // write the PWM compare values
   HAL_writePwmData(halHandle,&gPwmData);
 
+  if (txOffDelayActive) {
+	  txOffDelayCounter++;
+
+	  if (txOffDelayCounter == txOffDelayCount) {
+		  txOffDelayCounter = 0;
+		  txOffDelayActive = 0;
+		  setTxOff = 1;
+	  }
+  }
 
   return;
 } // end of mainISR() function
@@ -776,14 +883,67 @@ void updateKpKiGains(CTRL_Handle handle)
 } // end of updateKpKiGains() function
 
 interrupt void SCI_RX_ISR(void) {
-  char rev_data = 0 ;
-  if (SCI_rxDataReady(sciHandle) == 1) {
-    rev_data = SCI_read(sciHandle);
-  }
-  SCI_clearRxFifoOvf(sciHandle);
-  SCI_clearRxFifoInt(sciHandle);
+	rxIntCounter++;
 
-  PIE_clearInt(halHandle->pieHandle, PIE_GroupNumber_9);
+	if (SCI_rxDataReady(sciHandle) == 1) {
+		char c = SCI_read(sciHandle);
+
+		//buf[counter] = c;
+		//counter++;
+
+		if (counter < 8) {
+			//commandReceived = 1;
+
+			switch (counter) {
+			case 0:
+				if (c == '<') {
+					buf[counter] = c;
+					counter++;
+				} else {
+					counter = 0;
+				}
+				break;
+			case 1:
+				if (c == boardId) {
+					buf[counter] = c;
+					counter++;
+				} else {
+					counter = 0;
+				}
+				break;
+			case 2:
+				if (c == 's') {
+					buf[counter] = c;
+					counter++;
+				} else {
+					counter = 0;
+				}
+				break;
+			case 3:
+			case 4:
+			case 5:
+			case 6:
+				buf[counter] = c;
+				counter++;
+				break;
+			case 7:
+				if (c == '>') {
+					buf[counter] = c;
+					counter++;
+				} else {
+					counter = 0;
+				}
+				break;
+			default:
+				counter = 0;
+			}
+		}
+	}
+
+	SCI_clearRxFifoOvf(sciHandle);
+	SCI_clearRxFifoInt(sciHandle);
+
+	PIE_clearInt(halHandle->pieHandle, PIE_GroupNumber_9);
 }
 
 void scia_init() {
@@ -802,16 +962,22 @@ void scia_init() {
 	SCI_disableTxWake(sciHandle);
 	SCI_disableSleep(sciHandle);
 	SCI_enableRx(sciHandle);
+	SCI_enableRxFifo(sciHandle);
 	SCI_enableTx(sciHandle);
 	SCI_enableTxFifo(sciHandle);
-	SCI_enableTxFifoEnh(sciHandle);
+	//SCI_enableTxFifoEnh(sciHandle);
+
+	SCI_setBaudRate(sciHandle, 49);
+
+	SCI_clearRxFifoOvf(sciHandle);
+	SCI_clearRxFifoInt(sciHandle);
 
 	SCI_enableRxInt(sciHandle);
-	SCI_enableTxInt(sciHandle);
+	//SCI_enableTxInt(sciHandle);
 
-	SCI_setBaudRate(sciHandle, 780);
-
+	/*ENABLE_PROTECTED_REGISTER_WRITE_MODE;
 	halHandle->pieHandle->SCIRXINTA = &SCI_RX_ISR;
+	DISABLE_PROTECTED_REGISTER_WRITE_MODE;*/
 
 	SCI_enable(sciHandle);
 
@@ -820,6 +986,23 @@ void scia_init() {
 
     // enable CPU interrupt
     CPU_enableInt(halHandle->cpuHandle, CPU_IntNumber_9);
+}
+
+void serialWrite(char *sendData, int length) {
+	int i = 0;
+
+	//GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_12);
+	AIO_setHigh(halHandle->gpioHandle,AIO_Number_6);
+
+	while (i < length) {
+		if (SCI_txReady(sciHandle)) {
+			SCI_write(sciHandle, sendData[i]);
+			i++;
+		}
+	}
+
+	//GPIO_setLow(halHandle->gpioHandle,GPIO_Number_12);
+	isWaitingTxFifoEmpty = 1;
 }
 
 //@} //defgroup
