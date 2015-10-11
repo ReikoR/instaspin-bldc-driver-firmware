@@ -50,7 +50,7 @@
 #include "main.h"
 #include <string.h>
 #include "drivers/sci/sci.h"
-//#include "modules/usDelay/usDelay.h"
+#include "modules/usDelay/usDelay.h"
 
 
 #ifdef FLASH
@@ -71,7 +71,11 @@
 // **************************************************************************
 // the globals
 
-uint32_t boardId = '4';
+uint16_t boardId = '3';
+
+uint16_t writeData;
+uint16_t readData;
+volatile uint16_t timeout = 0;
 
 uint_least16_t gCounter_updateGlobals = 0;
 
@@ -147,7 +151,7 @@ int commandReceived = 0;
 int commandStart = 0;
 
 int isWaitingTxFifoEmpty = 0;
-int txOffDelayCount = 10; // 1 count = 66.667us, 15 counts = 1ms
+int txOffDelayCount = 15; // 1 count = 66.667us, 15 counts = 1ms
 int txOffDelayCounter = 0;
 int txOffDelayActive = 0;
 int setTxOff = 0;
@@ -594,9 +598,74 @@ void main(void)
       CTRL_setFlag_enablePowerWarp(ctrlHandle,gMotorVars.Flag_enablePowerWarp);
 
 #ifdef DRV8301_SPI
+      //GPIO_setLow(halHandle->gpioHandle,GPIO_Number_19);
       HAL_writeDrvData(halHandle,&gDrvSpi8301Vars);
 
       HAL_readDrvData(halHandle,&gDrvSpi8301Vars);
+      //GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_19);
+
+      //usDelay(5000);
+
+      /*GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
+
+      SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
+      SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+      SPI_write(halHandle->drv8301Handle->spiHandle,0b1001100000000000); //Enable write
+
+      usDelay(5000);
+
+      GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
+
+      usDelay(1000);
+
+      GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
+
+      SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
+      SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+
+      usDelay(1000);
+
+      SPI_write(halHandle->drv8301Handle->spiHandle,0xA000 | writeData >> 11);
+      SPI_write(halHandle->drv8301Handle->spiHandle, writeData << 5);
+
+      usDelay(5000);
+
+      timeout = 0;
+
+      //const uint16_t data = 0;
+      volatile uint16_t readWord;
+      volatile uint16_t WaitTimeOut = 0;
+      volatile SPI_FifoStatus_e RxFifoCnt = SPI_FifoStatus_Empty;
+
+      // reset the Rx fifo pointer to zero
+      SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
+      SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+
+      // write the command
+      SPI_write(halHandle->drv8301Handle->spiHandle,0xC000);
+
+      usDelay(100);
+      // dummy write to return the reply from the 8301
+      SPI_write(halHandle->drv8301Handle->spiHandle,0x0000);
+
+      GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
+
+      WaitTimeOut = 0;
+
+      // wait for two words to populate the RX fifo, or a wait timeout will occur
+      while((RxFifoCnt < SPI_FifoStatus_2_Words) && (WaitTimeOut < 0xffff)) {
+    	  RxFifoCnt = SPI_getRxFifoStatus(halHandle->drv8301Handle->spiHandle);
+
+    	  if (++WaitTimeOut > 0xfffe) {
+    		  //halHandle->drv8301Handle->RxTimeOut = true;
+    		  timeout = 1;
+		 }
+      }
+
+      readData = 0;
+
+      readData = (0b0000000000011111 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) << 11;
+      readData = readData | (0b1111111111100000 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) >> 5;*/
 #endif
 
     } // end of while(gFlag_enableSys) loop
@@ -885,7 +954,7 @@ void updateKpKiGains(CTRL_Handle handle)
 interrupt void SCI_RX_ISR(void) {
 	rxIntCounter++;
 
-	if (SCI_rxDataReady(sciHandle) == 1) {
+	while (SCI_rxDataReady(sciHandle) == 1) {
 		char c = SCI_read(sciHandle);
 
 		//buf[counter] = c;

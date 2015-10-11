@@ -545,8 +545,8 @@ void HAL_enablePwmInt(HAL_Handle handle)
 
 void HAL_setupFaults(HAL_Handle handle)
 {
-  HAL_Obj *obj = (HAL_Obj *)handle;
-  uint_least8_t cnt;
+  //HAL_Obj *obj = (HAL_Obj *)handle;
+  //uint_least8_t cnt;
 
 
   // Configure Trip Mechanism for the Motor control software
@@ -995,6 +995,9 @@ void HAL_setupGpios(HAL_Handle handle)
 
   // SPI_SCS
   GPIO_setMode(obj->gpioHandle,GPIO_Number_19,GPIO_19_Mode_SPISTEA_NOT);
+  //GPIO_setMode(obj->gpioHandle,GPIO_Number_19,GPIO_19_Mode_GeneralPurpose);
+  //GPIO_setDirection(obj->gpioHandle,GPIO_Number_19,GPIO_Direction_Output);
+  //GPIO_setHigh(obj->gpioHandle,GPIO_Number_19);
 
   // RX
   GPIO_setPullUp(obj->gpioHandle, GPIO_Number_28, GPIO_PullUp_Enable);
@@ -1011,8 +1014,10 @@ void HAL_setupGpios(HAL_Handle handle)
   // OCTWn
   GPIO_setMode(obj->gpioHandle,GPIO_Number_33,GPIO_33_Mode_GeneralPurpose);
 
-  // No Connection
+  // SCS2
   GPIO_setMode(obj->gpioHandle,GPIO_Number_34,GPIO_34_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_34,GPIO_Direction_Output);
+  GPIO_setLow(obj->gpioHandle,GPIO_Number_34);
 
   // JTAG
   GPIO_setMode(obj->gpioHandle,GPIO_Number_35,GPIO_35_Mode_JTAG_TDI);
