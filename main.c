@@ -71,10 +71,11 @@
 // **************************************************************************
 // the globals
 
-uint16_t boardId = '3';
+uint16_t boardId = '1';
 
-uint16_t writeData;
-uint16_t readData;
+volatile uint16_t writeData = 0b0101010101010101;
+volatile uint16_t readData = 0;
+volatile uint16_t writeEEPROM = 0;
 volatile uint16_t timeout = 0;
 
 uint_least16_t gCounter_updateGlobals = 0;
@@ -151,10 +152,11 @@ int commandReceived = 0;
 int commandStart = 0;
 
 int isWaitingTxFifoEmpty = 0;
-int txOffDelayCount = 15; // 1 count = 66.667us, 15 counts = 1ms
+int txOffDelayCount = 2; // 1 count = 66.667us, 15 counts = 1ms
 int txOffDelayCounter = 0;
 int txOffDelayActive = 0;
 int setTxOff = 0;
+int sendSpeed = 0;
 
 //uint32_t slowCount = 30000; // 2s
 //uint32_t slowCounter = 0;
@@ -329,17 +331,17 @@ void main(void)
     while(gMotorVars.Flag_enableSys)
     {
 
-    	if (isWaitingTxFifoEmpty && SCI_getRxFifoStatus(sciHandle) == SCI_FifoStatus_Empty) {
+    	/*if (isWaitingTxFifoEmpty && SCI_getRxFifoStatus(sciHandle) == SCI_FifoStatus_Empty) {
     	//if (isWaitingTxFifoEmpty && SCI_txReady(sciHandle)) {
     		isWaitingTxFifoEmpty = 0;
     		txOffDelayActive = 1;
-    	}
+    	}*/
 
-    	if (setTxOff) {
+    	/*if (setTxOff) {
     		setTxOff = 0;
     		//GPIO_setLow(halHandle->gpioHandle,GPIO_Number_12);
     		AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
-    	}
+    	}*/
 
     	//if (commandReceived) {
     	if (counter == 8) {
@@ -356,7 +358,7 @@ void main(void)
 				gMotorVars.SpeedRef_krpm = value;
 				gMotorVars.Flag_Run_Identify = 1;
 
-				returnBuf[0] = '<';
+				/*returnBuf[0] = '<';
 				returnBuf[1] = boardId;
 				returnBuf[2] = 'd';
 
@@ -368,7 +370,7 @@ void main(void)
 				returnBuf[6] = returnValue >> 24;
 				returnBuf[7] = '>';
 
-				serialWrite(returnBuf, 8);
+				serialWrite(returnBuf, 8);*/
 
 				//_IQtoa(returnBuf + 2, "%3.5f", gMotorVars.Speed_krpm);
 				//int n = strlen(returnBuf);
@@ -395,6 +397,26 @@ void main(void)
     		commandStart = 0;
     		counter = 0;
     	}
+
+    	if (sendSpeed) {
+    		sendSpeed = 0;
+
+			if (buf[1] == boardId && buf[2] == 's') {
+				returnBuf[0] = '<';
+				returnBuf[1] = boardId;
+				returnBuf[2] = 'd';
+
+				long returnValue = gMotorVars.Speed_krpm;
+
+				returnBuf[3] = returnValue;
+				returnBuf[4] = returnValue >> 8;
+				returnBuf[5] = returnValue >> 16;
+				returnBuf[6] = returnValue >> 24;
+				returnBuf[7] = '>';
+
+				serialWrite(returnBuf, 8);
+			}
+		}
 
     	/*if (SCI_txReady(sciHandle)) {
 			SCI_write(sciHandle, 'a');
@@ -606,66 +628,89 @@ void main(void)
 
       //usDelay(5000);
 
-      /*GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
+      /*if (writeEEPROM) {
+    	  writeEEPROM = 0;
 
-      SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
-      SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
-      SPI_write(halHandle->drv8301Handle->spiHandle,0b1001100000000000); //Enable write
+    	  GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
 
-      usDelay(5000);
+			SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
+			SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+			SPI_write(halHandle->drv8301Handle->spiHandle,0b1001100000000000); //Enable write
 
-      GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
+			usDelay(100);
 
-      usDelay(1000);
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
 
-      GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
+			usDelay(200);
 
-      SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
-      SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+			GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
 
-      usDelay(1000);
+			SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
+			SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
 
-      SPI_write(halHandle->drv8301Handle->spiHandle,0xA000 | writeData >> 11);
-      SPI_write(halHandle->drv8301Handle->spiHandle, writeData << 5);
+			usDelay(100);
 
-      usDelay(5000);
+			SPI_write(halHandle->drv8301Handle->spiHandle,0xA000 | writeData >> 11);
+			SPI_write(halHandle->drv8301Handle->spiHandle, writeData << 5);
 
-      timeout = 0;
+			usDelay(300);
 
-      //const uint16_t data = 0;
-      volatile uint16_t readWord;
-      volatile uint16_t WaitTimeOut = 0;
-      volatile SPI_FifoStatus_e RxFifoCnt = SPI_FifoStatus_Empty;
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
 
-      // reset the Rx fifo pointer to zero
-      SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
-      SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+			usDelay(20);
 
-      // write the command
-      SPI_write(halHandle->drv8301Handle->spiHandle,0xC000);
+			GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
 
-      usDelay(100);
-      // dummy write to return the reply from the 8301
-      SPI_write(halHandle->drv8301Handle->spiHandle,0x0000);
+			while (!GPIO_getData(halHandle->gpioHandle, GPIO_Number_17)) {
+				usDelay(10);
+			}
 
-      GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
+			usDelay(10);
 
-      WaitTimeOut = 0;
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
 
-      // wait for two words to populate the RX fifo, or a wait timeout will occur
-      while((RxFifoCnt < SPI_FifoStatus_2_Words) && (WaitTimeOut < 0xffff)) {
-    	  RxFifoCnt = SPI_getRxFifoStatus(halHandle->drv8301Handle->spiHandle);
+			usDelay(20);
 
-    	  if (++WaitTimeOut > 0xfffe) {
-    		  //halHandle->drv8301Handle->RxTimeOut = true;
-    		  timeout = 1;
-		 }
-      }
+			GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
 
-      readData = 0;
+			timeout = 0;
 
-      readData = (0b0000000000011111 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) << 11;
-      readData = readData | (0b1111111111100000 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) >> 5;*/
+			//const uint16_t data = 0;
+			volatile uint16_t WaitTimeOut = 0;
+			volatile SPI_FifoStatus_e RxFifoCnt = SPI_FifoStatus_Empty;
+
+			// reset the Rx fifo pointer to zero
+			SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
+			SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+
+			// write the command
+			SPI_write(halHandle->drv8301Handle->spiHandle,0xC000);
+			SPI_write(halHandle->drv8301Handle->spiHandle,0x0000);
+
+			WaitTimeOut = 0;
+
+			// wait for two words to populate the RX fifo, or a wait timeout will occur
+			while((RxFifoCnt < SPI_FifoStatus_2_Words) && (WaitTimeOut < 0xffff)) {
+			  RxFifoCnt = SPI_getRxFifoStatus(halHandle->drv8301Handle->spiHandle);
+
+			  if (++WaitTimeOut > 0xfffe) {
+				  //halHandle->drv8301Handle->RxTimeOut = true;
+				  timeout = 1;
+			 }
+			}
+
+			readData = 0;
+
+			usDelay(1);
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
+
+			//readData = (0b0000000000011111 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) << 11;
+			//readData = readData | (0b1111111111100000 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) >> 5;
+			readData = SPI_readEmu(halHandle->drv8301Handle->spiHandle);
+			readData = SPI_readEmu(halHandle->drv8301Handle->spiHandle);
+      }*/
+
+
 #endif
 
     } // end of while(gFlag_enableSys) loop
@@ -817,15 +862,39 @@ interrupt void mainISR(void)
   // write the PWM compare values
   HAL_writePwmData(halHandle,&gPwmData);
 
-  if (txOffDelayActive) {
-	  txOffDelayCounter++;
-
-	  if (txOffDelayCounter == txOffDelayCount) {
+  /*if (txOffDelayActive) {
+	  if (++txOffDelayCounter == txOffDelayCount) {
 		  txOffDelayCounter = 0;
 		  txOffDelayActive = 0;
-		  setTxOff = 1;
+		  //setTxOff = 1;
+		  AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
 	  }
-  }
+  }*/
+
+  /*if (txOffDelayActive) {
+  	  txOffDelayActive = 0;
+  	  AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
+  }*/
+
+  /*if (txOffDelayActive) {
+    			  txOffDelayActive = 0;
+    			  AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
+    		}*/
+
+  if (txOffDelayActive) {
+  	  if (++txOffDelayCounter == txOffDelayCount) {
+  		  txOffDelayCounter = 0;
+  		  txOffDelayActive = 0;
+  		  //setTxOff = 1;
+  		  AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
+  	  }
+    }
+
+  if (isWaitingTxFifoEmpty && SCI_getRxFifoStatus(sciHandle) == SCI_FifoStatus_Empty) {
+	//if (isWaitingTxFifoEmpty && SCI_txReady(sciHandle)) {
+		isWaitingTxFifoEmpty = 0;
+		txOffDelayActive = 1;
+	}
 
   return;
 } // end of mainISR() function
@@ -984,6 +1053,7 @@ interrupt void SCI_RX_ISR(void) {
 				if (c == 's') {
 					buf[counter] = c;
 					counter++;
+					sendSpeed = 1;
 				} else {
 					counter = 0;
 				}
@@ -999,6 +1069,7 @@ interrupt void SCI_RX_ISR(void) {
 				if (c == '>') {
 					buf[counter] = c;
 					counter++;
+					//sendSpeed = 1;
 				} else {
 					counter = 0;
 				}
