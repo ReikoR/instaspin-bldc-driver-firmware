@@ -78,6 +78,9 @@ volatile uint16_t readData = 0;
 volatile uint16_t writeEEPROM = 0;
 volatile uint16_t timeout = 0;
 
+volatile uint16_t voltageTooLow = 1;
+_iq lowVoltageThreshold = _IQ(0.01);
+
 uint_least16_t gCounter_updateGlobals = 0;
 
 bool Flag_Latch_softwareUpdate = true;
@@ -317,6 +320,7 @@ void main(void)
 
   gMotorVars.Kp_spd = _IQ(4.0);
   gMotorVars.MaxAccel_krpmps = _IQ(10.0);
+  gMotorVars.SpeedRef_krpm = _IQ(0.0);
   gMotorVars.Flag_enableSys = 1;
 
   for(;;)
@@ -483,8 +487,7 @@ void main(void)
       CTRL_setFlag_enableOffset(ctrlHandle,gMotorVars.Flag_enableOffsetcalc);
 
 
-      if(CTRL_isError(ctrlHandle))
-      {
+      if(CTRL_isError(ctrlHandle)) {
         // set the enable controller flag to false
         CTRL_setFlag_enableCtrl(ctrlHandle,false);
 
@@ -493,9 +496,15 @@ void main(void)
 
         // disable the PWM
         HAL_disablePwm(halHandle);
-      }
-      else
-      {
+      } else if (voltageTooLow) {
+    	  // set the enable controller flag to false
+		  CTRL_setFlag_enableCtrl(ctrlHandle,false);
+
+		  // disable the PWM
+		  HAL_disablePwm(halHandle);
+
+		  gMotorVars.Flag_Run_Identify = false;
+      } else {
         // update the controller state
         bool flag_ctrlStateChanged = CTRL_updateState(ctrlHandle);
 
@@ -607,6 +616,32 @@ void main(void)
         gCounter_updateGlobals = 0;
 
         updateGlobalVariables_motor(ctrlHandle);
+
+        if (voltageTooLow && gMotorVars.VdcBus_kV > lowVoltageThreshold) {
+        	voltageTooLow = 0;
+
+        	// Power restored, reset to start with fresh parameters
+        	// disable the PWM
+			HAL_disablePwm(halHandle);
+
+			// set the default controller parameters (Reset the control to re-identify the motor)
+			CTRL_setParams(ctrlHandle,&gUserParams);
+			gMotorVars.Flag_Run_Identify = false;
+        } else if (!voltageTooLow && gMotorVars.VdcBus_kV < lowVoltageThreshold) {
+        	voltageTooLow = 1;
+
+        	// Power lost, disable control
+			if (gMotorVars.Flag_Run_Identify) {
+				// disable the PWM
+				HAL_disablePwm(halHandle);
+
+				CTRL_setFlag_enableCtrl(ctrlHandle,false);
+
+				// set the default controller parameters (Reset the control to re-identify the motor)
+				CTRL_setParams(ctrlHandle,&gUserParams);
+				gMotorVars.Flag_Run_Identify = false;
+			}
+        }
       }
 
 
