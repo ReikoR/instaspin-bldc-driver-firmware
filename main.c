@@ -67,14 +67,20 @@
 
 #define LED_BLINK_FREQ_Hz   5
 
+#define EE_READ  0x80   // 10 xxxxxx(A6-A0)
+#define EE_WRITE 0x40   // 01 xxxxxx(A6-A0)
+#define EE_EWEN  0x3F   // 00 11XXXX(X is DONT CARE)
+#define EE_EWDS  0x00   // 00 00XXXX(X is DONT CARE)
+#define EE_ERASE 0xC0   // 11 xxxxxx(A6-A0)
+
 
 // **************************************************************************
 // the globals
 
-uint16_t boardId = '1';
+uint16_t boardId = '5';
 
 volatile uint16_t writeData = 0b0101010101010101;
-volatile uint16_t readData = 0;
+volatile uint16_t eepromReadData = 0;
 volatile uint16_t writeEEPROM = 0;
 volatile uint16_t timeout = 0;
 
@@ -166,6 +172,18 @@ int sendSpeed = 0;
 
 void scia_init(void);
 void serialWrite(char *sendData, int length);
+
+void eepromWriteEnable();
+
+void eepromWriteDisable();
+
+void eepromErase(char addr);
+
+unsigned short eepromRead(char addr);
+
+void eepromWrite(char addr, unsigned short data);
+
+void eepromSend(char data);
 
 // **************************************************************************
 // the functions
@@ -663,8 +681,8 @@ void main(void)
 
       //usDelay(5000);
 
-      /*if (writeEEPROM) {
-    	  writeEEPROM = 0;
+      //if (writeEEPROM) {
+    	  /*writeEEPROM = 0;
 
     	  GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
 
@@ -734,16 +752,24 @@ void main(void)
 			 }
 			}
 
-			readData = 0;
+			eepromReadData = 0;
 
 			usDelay(1);
 			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
 
-			//readData = (0b0000000000011111 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) << 11;
-			//readData = readData | (0b1111111111100000 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) >> 5;
-			readData = SPI_readEmu(halHandle->drv8301Handle->spiHandle);
-			readData = SPI_readEmu(halHandle->drv8301Handle->spiHandle);
-      }*/
+			//eepromReadData = (0b0000000000011111 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) << 11;
+			//eepromReadData = eepromReadData | (0b1111111111100000 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) >> 5;
+			eepromReadData = SPI_readEmu(halHandle->drv8301Handle->spiHandle);
+			eepromReadData = SPI_readEmu(halHandle->drv8301Handle->spiHandle);*/
+
+    	  /*writeEEPROM = 0;
+
+    	  eepromWriteEnable();
+    	  usDelay(100);
+    	  eepromWrite(0x00, writeData);
+    	  usDelay(100);
+    	  eepromReadData = eepromRead(0x00);*/
+      //}
 
 
 #endif
@@ -762,6 +788,104 @@ void main(void)
 
 } // end of main() function
 
+void eepromWriteEnable() {
+	eepromSend(EE_EWEN);
+	usDelay(1);
+	GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+}
+
+void eepromWriteDisable() {
+	eepromSend(EE_EWDS);
+    usDelay(1);
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+}
+
+void eepromErase(char addr) {
+    eepromSend(EE_ERASE | addr);
+    usDelay(1);
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+    /** wait busy flag clear */
+    usDelay(1);     // tcs > 250ns @2.7V
+    GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34); //_eecs=1;
+    usDelay(1);     // tsv < 250ns @2.7V
+    //while(_eedo==0); // 0.1ms < twp < 10ms
+    while (!GPIO_read(halHandle->gpioHandle,GPIO_Number_17));
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+}
+
+unsigned short eepromRead(char addr) {
+    unsigned short data = 0;
+    signed char i = 15;
+    eepromSend(EE_READ | addr);
+    usDelay(1);
+
+    for (i = 15; i >= 0; i--) {
+    	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_18); //_eeck=1;
+    	usDelay(1);
+        GPIO_setLow(halHandle->gpioHandle,GPIO_Number_18); //_eeck=0;
+        //data = data | (_eedo<<i);
+        data = data | (GPIO_read(halHandle->gpioHandle,GPIO_Number_17) << i);
+        usDelay(1);
+    }
+
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+    return data;
+}
+
+void eepromWrite(char addr, unsigned short data) {
+    signed char i = 15;
+    eepromSend(EE_WRITE | addr);
+
+    usDelay(1);
+
+    for (i = 15; i >= 0; i--){
+        //_eedi = (int)( (data>>i)&0x0001 );
+        if ((data >> i) & 0x0001) {
+        	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_16);
+        } else {
+        	GPIO_setLow(halHandle->gpioHandle,GPIO_Number_16);
+        }
+
+        usDelay(1);
+		GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_18); //_eeck=1;
+		usDelay(1);
+		GPIO_setLow(halHandle->gpioHandle,GPIO_Number_18); //_eeck=0;
+    }
+
+    usDelay(50);
+
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+    /** wait busy flag clear */
+    usDelay(1);     // tcs > 250ns @2.7V
+    GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34); //_eecs=1;
+    usDelay(1);     // tsv < 250ns @2.7V
+    //while(_eedo==0); // 0.1ms < twp < 10ms
+    while (!GPIO_read(halHandle->gpioHandle,GPIO_Number_17));
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+}
+
+void eepromSend(char data) {
+	signed char i = 7;
+	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_16); //_eedi=1;
+	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34); //_eecs=1;     // fall is in function
+	usDelay(1);
+	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_18); //_eeck=1;
+	usDelay(1);
+	GPIO_setLow(halHandle->gpioHandle,GPIO_Number_18); //_eeck=0;
+	while(i>=0){
+		//_eedi = (data>>i)&0x01;
+		if ((data >> i) & 0x0001) {
+			GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_16);
+		} else {
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_16);
+		}
+		i--;
+		usDelay(1);
+		GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_18); //_eeck=1;
+		usDelay(1);
+		GPIO_setLow(halHandle->gpioHandle,GPIO_Number_18); //_eeck=0;
+	}
+}
 
 interrupt void mainISR(void)
 {
@@ -930,6 +1054,16 @@ interrupt void mainISR(void)
 		isWaitingTxFifoEmpty = 0;
 		txOffDelayActive = 1;
 	}
+
+  /*if (writeEEPROM) {
+	  writeEEPROM = 0;
+
+	  eepromWriteEnable();
+	  usDelay(100);
+	  eepromWrite(0x00, writeData);
+	  usDelay(100);
+	  eepromReadData = eepromRead(0x00);
+  }*/
 
   return;
 } // end of mainISR() function

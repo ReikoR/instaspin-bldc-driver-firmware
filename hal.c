@@ -986,18 +986,25 @@ void HAL_setupGpios(HAL_Handle handle)
 
   // SPI_SDI if JP4 is soldered, No Connection if JP4 is not soldered
   GPIO_setMode(obj->gpioHandle,GPIO_Number_16,GPIO_16_Mode_SPISIMOA);
+  /*GPIO_setMode(obj->gpioHandle,GPIO_Number_16,GPIO_16_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_16,GPIO_Direction_Output);
+  GPIO_setLow(obj->gpioHandle,GPIO_Number_16);*/
 
   // SPI_SDO if JP6 is soldered, No Connection if JP6 is not soldered
   GPIO_setMode(obj->gpioHandle,GPIO_Number_17,GPIO_17_Mode_SPISOMIA);
+  /*GPIO_setMode(obj->gpioHandle,GPIO_Number_17,GPIO_17_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_17,GPIO_Direction_Input);*/
 
   // SPI_CLK
   GPIO_setMode(obj->gpioHandle,GPIO_Number_18,GPIO_18_Mode_SPICLKA);
+  /*GPIO_setMode(obj->gpioHandle,GPIO_Number_18,GPIO_18_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_18,GPIO_Direction_Output);*/
 
   // SPI_SCS
   GPIO_setMode(obj->gpioHandle,GPIO_Number_19,GPIO_19_Mode_SPISTEA_NOT);
-  //GPIO_setMode(obj->gpioHandle,GPIO_Number_19,GPIO_19_Mode_GeneralPurpose);
-  //GPIO_setDirection(obj->gpioHandle,GPIO_Number_19,GPIO_Direction_Output);
-  //GPIO_setHigh(obj->gpioHandle,GPIO_Number_19);
+  /*GPIO_setMode(obj->gpioHandle,GPIO_Number_19,GPIO_19_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_19,GPIO_Direction_Output);
+  GPIO_setHigh(obj->gpioHandle,GPIO_Number_19);*/
 
   // RX
   GPIO_setPullUp(obj->gpioHandle, GPIO_Number_28, GPIO_PullUp_Enable);
