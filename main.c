@@ -365,8 +365,8 @@ void main(void)
     		AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
     	}*/
 
-    	//if (commandReceived) {
-    	if (counter == 8) {
+    	if (commandReceived) {
+    	//if (counter == 9) {
     		commandReceived = 0;
 
     		//SerialCommand cmd;
@@ -374,11 +374,11 @@ void main(void)
     		//memcpy(&cmd, buf + commandStart, 6);
 
     		//if (cmd.id == boardId && cmd.type == 's') {
-    		if (buf[1] == boardId && buf[2] == 's') {
-    			long value = ((long)buf[3]) | ((long)buf[4] << 8) | ((long)buf[5] << 16) | ((long)buf[6] << 24);
+    		//if (buf[1] == boardId && buf[2] == 's') {
+    			/*long value = ((long)buf[3]) | ((long)buf[4] << 8) | ((long)buf[5] << 16) | ((long)buf[6] << 24);
 
 				gMotorVars.SpeedRef_krpm = value;
-				gMotorVars.Flag_Run_Identify = 1;
+				gMotorVars.Flag_Run_Identify = 1;*/
 
 				/*returnBuf[0] = '<';
 				returnBuf[1] = boardId;
@@ -402,25 +402,26 @@ void main(void)
 				//long * intlocation = (long*)(&returnBuf[2]);
 				//*intlocation = gMotorVars.SpeedRef_krpm;
 				//*intlocation = 287392129l;
-			}
+			//}
 
-    		/*if (buf[commandStart] == boardId && buf[commandStart + 1] == 's') {
-				gMotorVars.SpeedRef_krpm = _atoIQ(buf + commandStart + 2);
+    		if (buf[1] == boardId && buf[2] == 's') {
+    			buf[counter - 1] = '\0';
+				gMotorVars.SpeedRef_krpm = _atoIQ(buf + 3);
 				gMotorVars.Flag_Run_Identify = 1;
 
-				returnBuf[0] = boardId;
+				/*returnBuf[0] = boardId;
 				returnBuf[1] = 's';
 				_IQtoa(returnBuf + 2, "%3.5f", gMotorVars.Speed_krpm);
 				int n = strlen(returnBuf);
 				returnBuf[n] = '\n';
-				serialWrite(returnBuf, n + 1);
-			}*/
+				serialWrite(returnBuf, n + 1);*/
+			}
 
     		commandStart = 0;
     		counter = 0;
     	}
 
-    	if (sendSpeed) {
+    	/*if (sendSpeed) {
     		sendSpeed = 0;
 
 			if (buf[1] == boardId && buf[2] == 's') {
@@ -438,7 +439,7 @@ void main(void)
 
 				serialWrite(returnBuf, 8);
 			}
-		}
+		}*/
 
     	/*if (SCI_txReady(sciHandle)) {
 			SCI_write(sciHandle, 'a');
@@ -1198,7 +1199,7 @@ interrupt void SCI_RX_ISR(void) {
 		//buf[counter] = c;
 		//counter++;
 
-		if (counter < 8) {
+		if (counter < 15) {
 			//commandReceived = 1;
 
 			switch (counter) {
@@ -1231,21 +1232,27 @@ interrupt void SCI_RX_ISR(void) {
 			case 4:
 			case 5:
 			case 6:
+			case 7:
+			case 8:
+			case 9:
+			case 10:
+			case 11:
+			case 12:
+			case 13:
+			case 14:
+			case 15:
 				buf[counter] = c;
 				counter++;
-				break;
-			case 7:
+
 				if (c == '>') {
-					buf[counter] = c;
-					counter++;
-					//sendSpeed = 1;
-				} else {
-					counter = 0;
+					commandReceived = 1;
 				}
 				break;
 			default:
 				counter = 0;
 			}
+		} else {
+			counter = 0;
 		}
 	}
 
@@ -1276,7 +1283,7 @@ void scia_init() {
 	SCI_enableTxFifo(sciHandle);
 	//SCI_enableTxFifoEnh(sciHandle);
 
-	SCI_setBaudRate(sciHandle, 49);
+	SCI_setBaudRate(sciHandle, 390);
 
 	SCI_clearRxFifoOvf(sciHandle);
 	SCI_clearRxFifoInt(sciHandle);
