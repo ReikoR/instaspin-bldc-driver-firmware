@@ -404,7 +404,7 @@ void main(void)
 				//*intlocation = 287392129l;
 			//}
 
-    		if (buf[1] == boardId && buf[2] == 's') {
+    		if (buf[0] == boardId && buf[2] == 's') {
     			buf[counter - 1] = '\0';
 				gMotorVars.SpeedRef_krpm = _atoIQ(buf + 3);
 				gMotorVars.Flag_Run_Identify = 1;
@@ -1204,7 +1204,7 @@ interrupt void SCI_RX_ISR(void) {
 
 			switch (counter) {
 			case 0:
-				if (c == '<') {
+				if (c == boardId) {
 					buf[counter] = c;
 					counter++;
 				} else {
@@ -1212,9 +1212,10 @@ interrupt void SCI_RX_ISR(void) {
 				}
 				break;
 			case 1:
-				if (c == boardId) {
+				if (c == ':') {
 					buf[counter] = c;
 					counter++;
+					sendSpeed = 1;
 				} else {
 					counter = 0;
 				}
@@ -1244,7 +1245,7 @@ interrupt void SCI_RX_ISR(void) {
 				buf[counter] = c;
 				counter++;
 
-				if (c == '>') {
+				if (c == '\n') {
 					commandReceived = 1;
 				}
 				break;
