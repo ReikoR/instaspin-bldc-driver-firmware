@@ -75,7 +75,7 @@ extern "C" {
 //! \brief Defines the full scale frequency for IQ variable, Hz
 //! \brief All frequencies are converted into (pu) based on the ratio to this value
 //! \brief this value MUST be larger than the maximum speed that you are expecting from the motor 
-#define USER_IQ_FULL_SCALE_FREQ_Hz        (1200.0)   // 800 Example with buffer for 8-pole 6 KRPM motor to be run to 10 KRPM with field weakening; Hz =(RPM * Poles) / 120
+#define USER_IQ_FULL_SCALE_FREQ_Hz        (800.0)   // 800 Example with buffer for 8-pole 6 KRPM motor to be run to 10 KRPM with field weakening; Hz =(RPM * Poles) / 120
 
 //! \brief Defines full scale value for the IQ30 variable of Voltage inside the system
 //! \brief All voltages are converted into (pu) based on the ratio to this value
@@ -371,8 +371,8 @@ extern "C" {
 //#define USER_MOTOR medical_instrument
 //#define USER_MOTOR Kinetek_YDQ1p3_4
 //#define USER_MOTOR LPKF_CAD_CAM
-//#define USER_MOTOR multistar_4108_380kv
-#define USER_MOTOR propdrive_28_26_1100kv
+#define USER_MOTOR multistar_4108_380kv
+//#define USER_MOTOR propdrive_28_26_1100kv
 
 
 #if (USER_MOTOR == Estun_EMJ_04APB22)                  // Name must match the motor #define
@@ -603,10 +603,10 @@ extern "C" {
 #define USER_MOTOR_TYPE                 MOTOR_Type_Pm
 #define USER_MOTOR_NUM_POLE_PAIRS       (11)
 #define USER_MOTOR_Rr                   (NULL)
-#define USER_MOTOR_Rs                   (0.105) //0.1037551
-#define USER_MOTOR_Ls_d                 (1.9e-05) //1.574909e-05
-#define USER_MOTOR_Ls_q                 (1.9e-05) //1.574909e-05
-#define USER_MOTOR_RATED_FLUX           (0.008228808)
+#define USER_MOTOR_Rs                   (0.1018801) //0.1018801
+#define USER_MOTOR_Ls_d                 (1.656024e-05) //1.656024e-05
+#define USER_MOTOR_Ls_q                 (1.656024e-05) //1.656024e-05
+#define USER_MOTOR_RATED_FLUX           (0.008369201) //0.008369201
 #define USER_MOTOR_MAGNETIZING_CURRENT  (NULL)
 #define USER_MOTOR_RES_EST_CURRENT      (1.0)
 #define USER_MOTOR_IND_EST_CURRENT      (-1.0)
@@ -617,10 +617,10 @@ extern "C" {
 #define USER_MOTOR_TYPE                 MOTOR_Type_Pm
 #define USER_MOTOR_NUM_POLE_PAIRS       (6)
 #define USER_MOTOR_Rr                   (NULL)
-#define USER_MOTOR_Rs                   (0.07746002)
-#define USER_MOTOR_Ls_d                 (1.95592e-05)
-#define USER_MOTOR_Ls_q                 (1.95592e-05)
-#define USER_MOTOR_RATED_FLUX           (0.00552956)
+#define USER_MOTOR_Rs                   (0.07626002)
+#define USER_MOTOR_Ls_d                 (1.783349e-05)
+#define USER_MOTOR_Ls_q                 (1.783349e-05)
+#define USER_MOTOR_RATED_FLUX           (0.0055305)
 #define USER_MOTOR_MAGNETIZING_CURRENT  (NULL)
 #define USER_MOTOR_RES_EST_CURRENT      (2.0)
 #define USER_MOTOR_IND_EST_CURRENT      (-2.0)
