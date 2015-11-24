@@ -85,7 +85,7 @@ volatile uint16_t writeEEPROM = 0;
 volatile uint16_t timeout = 0;
 
 volatile uint16_t voltageTooLow = 1;
-_iq lowVoltageThreshold = _IQ(0.01);
+_iq lowVoltageThreshold = _IQ(0.005);
 
 uint_least16_t gCounter_updateGlobals = 0;
 
