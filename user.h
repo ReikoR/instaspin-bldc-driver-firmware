@@ -342,6 +342,7 @@ extern "C" {
 #define multistar_4108_380kv        118
 #define propdrive_28_26_1100kv		119
 #define propdrive_28_36_750kv		120
+#define propdrive_28_26s_1000kv 122
 #define knuth		121
 
 // IPM motors
@@ -374,9 +375,10 @@ extern "C" {
 //#define USER_MOTOR Kinetek_YDQ1p3_4
 //#define USER_MOTOR LPKF_CAD_CAM
 //#define USER_MOTOR multistar_4108_380kv
-//#define USER_MOTOR propdrive_28_26_1100kv
+#define USER_MOTOR propdrive_28_26_1100kv
 //#define USER_MOTOR propdrive_28_36_750kv
-#define USER_MOTOR knuth
+//#define USER_MOTOR propdrive_28_26s_1000kv
+//#define USER_MOTOR knuth
 
 
 #if (USER_MOTOR == Estun_EMJ_04APB22)                  // Name must match the motor #define
@@ -630,6 +632,20 @@ extern "C" {
 #define USER_MOTOR_IND_EST_CURRENT      (-2.0)
 #define USER_MOTOR_MAX_CURRENT          (10.0)
 #define USER_MOTOR_FLUX_EST_FREQ_Hz     (200.0)
+
+#elif (USER_MOTOR == propdrive_28_26s_1000kv)
+#define USER_MOTOR_TYPE                 MOTOR_Type_Pm
+#define USER_MOTOR_NUM_POLE_PAIRS       (6)
+#define USER_MOTOR_Rr                   (NULL)
+#define USER_MOTOR_Rs                   (0.07382252) //0.07382252
+#define USER_MOTOR_Ls_d                 (2.765895e-05) //2.765895e-05
+#define USER_MOTOR_Ls_q                 (2.765895e-05) //2.765895e-05
+#define USER_MOTOR_RATED_FLUX           (0.005978892) //0.005978892
+#define USER_MOTOR_MAGNETIZING_CURRENT  (NULL)
+#define USER_MOTOR_RES_EST_CURRENT      (2.0)
+#define USER_MOTOR_IND_EST_CURRENT      (-2.0)
+#define USER_MOTOR_MAX_CURRENT          (14.0)
+#define USER_MOTOR_FLUX_EST_FREQ_Hz     (100.0)
 
 #elif (USER_MOTOR == propdrive_28_36_750kv)
 #define USER_MOTOR_TYPE                 MOTOR_Type_Pm

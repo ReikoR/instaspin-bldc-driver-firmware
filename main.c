@@ -77,7 +77,7 @@
 // **************************************************************************
 // the globals
 
-uint16_t boardId = '5';
+uint16_t boardId = '1';
 
 volatile uint16_t writeData = 0b0101010101010101;
 volatile uint16_t eepromReadData = 0;
