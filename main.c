@@ -51,6 +51,8 @@
 #include <string.h>
 #include "drivers/sci/sci.h"
 #include "modules/usDelay/usDelay.h"
+#include "modules/angle_gen/angle_gen.h"
+#include "modules/vs_freq/vs_freq.h"
 
 
 #ifdef FLASH
@@ -128,6 +130,7 @@ _iq gMaxCurrentSlope = _IQ(0.0);
 CTRL_Obj *controller_obj;
 #else
 CTRL_Obj ctrl;				//v1p7 format
+CTRL_Obj *controller_obj;
 #endif
 
 uint16_t gLEDcnt = 0;
@@ -185,6 +188,16 @@ void eepromWrite(char addr, unsigned short data);
 
 void eepromSend(char data);
 
+bool isOpenLoop = true;
+
+// define Angle Generate
+ANGLE_GEN_Handle angle_genHandle;
+ANGLE_GEN_Obj    angle_gen;
+
+// define Vs per Freq
+VS_FREQ_Handle vs_freqHandle;
+VS_FREQ_Obj    vs_freq;
+
 // **************************************************************************
 // the functions
 
@@ -238,11 +251,11 @@ void main(void)
   // initialize the controller
 #ifdef FAST_ROM_V1p6
   ctrlHandle = CTRL_initCtrl(ctrlNumber, estNumber);  		//v1p6 format (06xF and 06xM devices)
-  controller_obj = (CTRL_Obj *)ctrlHandle;
 #else
   ctrlHandle = CTRL_initCtrl(estNumber,&ctrl,sizeof(ctrl));	//v1p7 format default
 #endif
 
+  controller_obj = (CTRL_Obj *)ctrlHandle;
 
   {
     CTRL_Version version;
@@ -257,6 +270,15 @@ void main(void)
   // set the default controller parameters
   CTRL_setParams(ctrlHandle,&gUserParams);
 
+
+  // initialize the angle generate module
+  angle_genHandle = ANGLE_GEN_init(&angle_gen,sizeof(angle_gen));
+  ANGLE_GEN_setParams(angle_genHandle, gUserParams.iqFullScaleFreq_Hz, gUserParams.ctrlPeriod_sec);
+
+  // initialize the Vs per Freq module
+  vs_freqHandle = VS_FREQ_init(&vs_freq,sizeof(vs_freq));
+  VS_FREQ_setParams(vs_freqHandle,  gUserParams.iqFullScaleFreq_Hz, gUserParams.iqFullScaleVoltage_V, gUserParams.maxVsMag_pu);
+  VS_FREQ_setProfile(vs_freqHandle, USER_MOTOR_FREQ_LOW, USER_MOTOR_FREQ_HIGH, USER_MOTOR_VOLT_MIN, USER_MOTOR_VOLT_MAX);
 
   // initialize the Clarke modules
   clarkeHandle_I = CLARKE_init(&clarke_I,sizeof(clarke_I));
@@ -561,13 +583,41 @@ void main(void)
             {
               uint_least16_t cnt;
 
-              // set the current bias
-              for(cnt=0;cnt<3;cnt++)
-                HAL_setBias(halHandle,HAL_SensorType_Current,cnt,gAdcBiasI.value[cnt]);
+              if (isOpenLoop) {
+                  // set the current bias
+                HAL_setBias(halHandle,HAL_SensorType_Current,0,_IQ(I_A_offset));
+                HAL_setBias(halHandle,HAL_SensorType_Current,1,_IQ(I_B_offset));
+                HAL_setBias(halHandle,HAL_SensorType_Current,2,_IQ(I_C_offset));
 
-              // set the voltage bias
-              for(cnt=0;cnt<3;cnt++)
-                HAL_setBias(halHandle,HAL_SensorType_Voltage,cnt,gAdcBiasV.value[cnt]);
+                // set the voltage bias
+                HAL_setBias(halHandle,HAL_SensorType_Voltage,0,_IQ(V_A_offset));
+                HAL_setBias(halHandle,HAL_SensorType_Voltage,1,_IQ(V_B_offset));
+                HAL_setBias(halHandle,HAL_SensorType_Voltage,2,_IQ(V_C_offset));
+
+
+              } else {
+                  // set the current bias
+                for(cnt=0;cnt<3;cnt++)
+                  HAL_setBias(halHandle,HAL_SensorType_Current,cnt,gAdcBiasI.value[cnt]);
+
+                // set the voltage bias
+                for(cnt=0;cnt<3;cnt++)
+                  HAL_setBias(halHandle,HAL_SensorType_Voltage,cnt,gAdcBiasV.value[cnt]);
+              }
+            }
+
+            if (isOpenLoop) {
+                // set flag to disable speed controller
+                 CTRL_setFlag_enableSpeedCtrl(ctrlHandle, false);
+
+                 // set flag to disable current controller
+                 CTRL_setFlag_enableCurrentCtrl(ctrlHandle, false);
+            } else {
+                // set flag to disable speed controller
+                 CTRL_setFlag_enableSpeedCtrl(ctrlHandle, true);
+
+                 // set flag to disable current controller
+                 CTRL_setFlag_enableCurrentCtrl(ctrlHandle, true);
             }
 
             // enable the PWM
@@ -920,7 +970,95 @@ interrupt void mainISR(void)
   // convert the ADC data
   HAL_readAdcData(halHandle,&gAdcData);
 
-  {
+  if (isOpenLoop) {
+    uint_least16_t count_isr = CTRL_getCount_isr(ctrlHandle);
+    uint_least16_t numIsrTicksPerCtrlTick = CTRL_getNumIsrTicksPerCtrlTick(ctrlHandle);
+
+    // if needed, run the controller
+    if (count_isr >= numIsrTicksPerCtrlTick) {
+        CTRL_State_e ctrlState = CTRL_getState(ctrlHandle);
+
+        // reset the isr count
+        CTRL_resetCounter_isr(ctrlHandle);
+
+        // increment the state counter
+        CTRL_incrCounter_state(ctrlHandle);
+
+        // increment the trajectory count
+        CTRL_incrCounter_traj(ctrlHandle);
+
+        // run the appropriate controller
+        if(ctrlState == CTRL_State_OnLine)
+          {
+            // increment the current count
+            CTRL_incrCounter_current(ctrlHandle);
+
+            // increment the speed count
+            CTRL_incrCounter_speed(ctrlHandle);
+
+            MATH_vec2 phasor;
+
+           // run Clarke transform on current
+           CLARKE_run(controller_obj->clarkeHandle_I,&gAdcData.I,CTRL_getIab_in_addr(ctrlHandle));
+
+           // run Clarke transform on voltage
+           CLARKE_run(controller_obj->clarkeHandle_V,&gAdcData.V,CTRL_getVab_in_addr(ctrlHandle));
+
+           controller_obj->speed_ref_pu = TRAJ_getIntValue(controller_obj->trajHandle_spd);
+
+           //controller_obj->speed_ref_pu = _IQ(0.01);
+
+           //
+           ANGLE_GEN_run(angle_genHandle, controller_obj->speed_ref_pu);
+           VS_FREQ_run(vs_freqHandle, controller_obj->speed_ref_pu);
+
+           // generate the motor electrical angle
+           controller_obj->angle_pu = ANGLE_GEN_getAngle_pu(angle_genHandle);
+
+           controller_obj->Vdq_out.value[0] = vs_freq.Vdq_out.value[0];
+           controller_obj->Vdq_out.value[1] = vs_freq.Vdq_out.value[1];
+
+           // compute the sin/cos phasor
+           CTRL_computePhasor(controller_obj->angle_pu,&phasor);
+
+           // set the phasor in the Park transform
+           PARK_setPhasor(controller_obj->parkHandle,&phasor);
+
+           // run the Park transform
+           PARK_run(controller_obj->parkHandle,CTRL_getIab_in_addr(ctrlHandle),CTRL_getIdq_in_addr(ctrlHandle));
+
+
+           // set the phasor in the inverse Park transform
+           IPARK_setPhasor(controller_obj->iparkHandle,&phasor);
+
+           // run the inverse Park module
+           IPARK_run(controller_obj->iparkHandle,CTRL_getVdq_out_addr(ctrlHandle),CTRL_getVab_out_addr(ctrlHandle));
+
+           // run the space Vector Generator (SVGEN) module
+           SVGEN_run(controller_obj->svgenHandle,CTRL_getVab_out_addr(ctrlHandle),&(gPwmData.Tabc));
+          }
+        else if(ctrlState == CTRL_State_OffLine)
+          {
+            // run the offline controller
+            CTRL_runOffLine(ctrlHandle,halHandle,&gAdcData,&gPwmData);
+          }
+        else if(ctrlState == CTRL_State_Idle)
+          {
+            // set all pwm outputs to zero
+            gPwmData.Tabc.value[0] = _IQ(0.0);
+            gPwmData.Tabc.value[1] = _IQ(0.0);
+            gPwmData.Tabc.value[2] = _IQ(0.0);
+          }
+      }
+    else
+      {
+        // increment the isr count
+        CTRL_incrCounter_isr(ctrlHandle);
+      }
+
+    CTRL_setup(ctrlHandle);
+
+  } else {
     uint_least16_t count_isr = CTRL_getCount_isr(ctrlHandle);
     uint_least16_t numIsrTicksPerCtrlTick = CTRL_getNumIsrTicksPerCtrlTick(ctrlHandle);
 

@@ -643,6 +643,12 @@ extern "C" {
 #define USER_MOTOR_MAX_CURRENT          (15.0)
 #define USER_MOTOR_FLUX_EST_FREQ_Hz     (100.0)
 
+#define USER_MOTOR_FREQ_LOW             (1.0)
+#define USER_MOTOR_FREQ_HIGH            (100.0)
+#define USER_MOTOR_FREQ_MAX             (120.0)
+#define USER_MOTOR_VOLT_MIN             (2.0)
+#define USER_MOTOR_VOLT_MAX             (14.0)
+
 #else
 #error No motor type specified
 #endif
