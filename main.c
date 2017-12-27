@@ -188,7 +188,7 @@ void eepromWrite(char addr, unsigned short data);
 
 void eepromSend(char data);
 
-bool isOpenLoop = true;
+bool isOpenLoop = false;
 
 // define Angle Generate
 ANGLE_GEN_Handle angle_genHandle;
