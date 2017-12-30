@@ -79,7 +79,17 @@
 // **************************************************************************
 // the globals
 
-uint16_t boardId = '1';
+#if (USER_MOTOR == multistar_4108_380kv_1)
+uint16_t  boardId = '1';
+#elif (USER_MOTOR == multistar_4108_380kv_2)
+uint16_t boardId = '2';
+#elif (USER_MOTOR == multistar_4108_380kv_3)
+uint16_t boardId = '3';
+#elif (USER_MOTOR == multistar_4108_380kv_4)
+uint16_t boardId = '4';
+#else
+uint16_t boardId = '5';
+#endif
 
 volatile uint16_t writeData = 0b0101010101010101;
 volatile uint16_t eepromReadData = 0;
@@ -361,7 +371,7 @@ void main(void)
   gMotorVars.Kp_spd = _IQ(4.0);
   gMotorVars.MaxAccel_krpmps = _IQ(10.0);
   gMotorVars.SpeedRef_krpm = _IQ(0.0);
-  gMotorVars.Flag_enableSys = 1;
+  gMotorVars.Flag_enableSys = true;
 
   for(;;)
   {
@@ -398,9 +408,23 @@ void main(void)
     		//if (cmd.id == boardId && cmd.type == 's') {
     		if (buf[1] == boardId && buf[2] == 's') {
     			long value = ((long)buf[3]) | ((long)buf[4] << 8) | ((long)buf[5] << 16) | ((long)buf[6] << 24);
+    			bool isRunIdentify = 1;
+
+#if (USER_MOTOR == propdrive_v2_2836_1200kv)
+    			if (value == _IQ(0.0)) {
+    			    isRunIdentify = 0;
+    			}
+    			else if (_IQabs(value) <= _IQ(0.2)) {
+    			    isOpenLoop = true;
+    			}
+    			else {
+    			    isOpenLoop = false;
+    			}
+
+#endif
 
 				gMotorVars.SpeedRef_krpm = value;
-				gMotorVars.Flag_Run_Identify = 1;
+				gMotorVars.Flag_Run_Identify = isRunIdentify;
 
 				/*returnBuf[0] = '<';
 				returnBuf[1] = boardId;
