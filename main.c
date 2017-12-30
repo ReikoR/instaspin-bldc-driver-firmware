@@ -372,6 +372,7 @@ void main(void)
   gMotorVars.MaxAccel_krpmps = _IQ(10.0);
   gMotorVars.SpeedRef_krpm = _IQ(0.0);
   gMotorVars.Flag_enableSys = true;
+  gMotorVars.Flag_enableOffsetcalc = false;
 
   for(;;)
   {
@@ -605,30 +606,26 @@ void main(void)
             }
             else
             {
-              uint_least16_t cnt;
+              // set the current bias
+              HAL_setBias(halHandle,HAL_SensorType_Current,0,_IQ(I_A_offset));
+              HAL_setBias(halHandle,HAL_SensorType_Current,1,_IQ(I_B_offset));
+              HAL_setBias(halHandle,HAL_SensorType_Current,2,_IQ(I_C_offset));
 
-              if (isOpenLoop) {
-                  // set the current bias
-                HAL_setBias(halHandle,HAL_SensorType_Current,0,_IQ(I_A_offset));
-                HAL_setBias(halHandle,HAL_SensorType_Current,1,_IQ(I_B_offset));
-                HAL_setBias(halHandle,HAL_SensorType_Current,2,_IQ(I_C_offset));
-
-                // set the voltage bias
-                HAL_setBias(halHandle,HAL_SensorType_Voltage,0,_IQ(V_A_offset));
-                HAL_setBias(halHandle,HAL_SensorType_Voltage,1,_IQ(V_B_offset));
-                HAL_setBias(halHandle,HAL_SensorType_Voltage,2,_IQ(V_C_offset));
-
-
-              } else {
-                  // set the current bias
-                for(cnt=0;cnt<3;cnt++)
-                  HAL_setBias(halHandle,HAL_SensorType_Current,cnt,gAdcBiasI.value[cnt]);
-
-                // set the voltage bias
-                for(cnt=0;cnt<3;cnt++)
-                  HAL_setBias(halHandle,HAL_SensorType_Voltage,cnt,gAdcBiasV.value[cnt]);
-              }
+              // set the voltage bias
+              HAL_setBias(halHandle,HAL_SensorType_Voltage,0,_IQ(V_A_offset));
+              HAL_setBias(halHandle,HAL_SensorType_Voltage,1,_IQ(V_B_offset));
+              HAL_setBias(halHandle,HAL_SensorType_Voltage,2,_IQ(V_C_offset));
             }
+
+            // Return the bias value for currents
+            gMotorVars.I_bias.value[0] = HAL_getBias(halHandle,HAL_SensorType_Current,0);
+            gMotorVars.I_bias.value[1] = HAL_getBias(halHandle,HAL_SensorType_Current,1);
+            gMotorVars.I_bias.value[2] = HAL_getBias(halHandle,HAL_SensorType_Current,2);
+
+            // Return the bias value for voltages
+            gMotorVars.V_bias.value[0] = HAL_getBias(halHandle,HAL_SensorType_Voltage,0);
+            gMotorVars.V_bias.value[1] = HAL_getBias(halHandle,HAL_SensorType_Voltage,1);
+            gMotorVars.V_bias.value[2] = HAL_getBias(halHandle,HAL_SensorType_Voltage,2);
 
             if (isOpenLoop) {
                 // set flag to disable speed controller
