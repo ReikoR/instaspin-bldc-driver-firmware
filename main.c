@@ -1435,7 +1435,7 @@ void scia_init() {
 	SCI_enableTxFifo(sciHandle);
 	//SCI_enableTxFifoEnh(sciHandle);
 
-	SCI_setBaudRate(sciHandle, 49);
+	SCI_setBaudRate(sciHandle, (SCI_BaudRate_e)49);
 
 	SCI_clearRxFifoOvf(sciHandle);
 	SCI_clearRxFifoInt(sciHandle);
