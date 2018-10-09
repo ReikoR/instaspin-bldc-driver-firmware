@@ -92,7 +92,7 @@ PAGE 1 :   /* Data Memory */
 
    RAMM0_M1    : origin = 0x000000, length = 0x000800     /* on-chip RAM block M0 + M1 */
    P_DRAML0    : origin = 0x008000, length = 0x001000     /* on-chip PRAM and DRAM blocks L0 */
-   FLASHA_D    : origin = 0x3F0000, length = 0x007F80     /* on-chip FLASH A, B, C and D */
+   FLASHA_D    : origin = 0x3F4000, length = 0x007F80     /* on-chip FLASH A, B, C and D */
 }
 
 /* Allocate sections to memory blocks.
