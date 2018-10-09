@@ -48,10 +48,16 @@
 // system includes
 #include <math.h>
 #include "main.h"
+#include <string.h>
 #include "drivers/sci/sci.h"
+#include "modules/usDelay/usDelay.h"
+#include "modules/angle_gen/angle_gen.h"
+#include "modules/vs_freq/vs_freq.h"
+
 
 #ifdef FLASH
 #pragma CODE_SECTION(mainISR,"ramfuncs");
+#pragma CODE_SECTION(SCI_RX_ISR,"ramfuncs");
 #endif
 
 // Include header files used in the main function
@@ -63,9 +69,35 @@
 
 #define LED_BLINK_FREQ_Hz   5
 
+#define EE_READ  0x80   // 10 xxxxxx(A6-A0)
+#define EE_WRITE 0x40   // 01 xxxxxx(A6-A0)
+#define EE_EWEN  0x3F   // 00 11XXXX(X is DONT CARE)
+#define EE_EWDS  0x00   // 00 00XXXX(X is DONT CARE)
+#define EE_ERASE 0xC0   // 11 xxxxxx(A6-A0)
+
 
 // **************************************************************************
 // the globals
+
+#if (USER_MOTOR == multistar_4108_380kv_1)
+uint16_t  boardId = '1';
+#elif (USER_MOTOR == multistar_4108_380kv_2)
+uint16_t boardId = '2';
+#elif (USER_MOTOR == multistar_4108_380kv_3)
+uint16_t boardId = '3';
+#elif (USER_MOTOR == multistar_4108_380kv_4)
+uint16_t boardId = '4';
+#else
+uint16_t boardId = '5';
+#endif
+
+volatile uint16_t writeData = 0b0101010101010101;
+volatile uint16_t eepromReadData = 0;
+volatile uint16_t writeEEPROM = 0;
+volatile uint16_t timeout = 0;
+
+volatile uint16_t voltageTooLow = 1;
+_iq lowVoltageThreshold = _IQ(0.01);
 
 uint_least16_t gCounter_updateGlobals = 0;
 
@@ -108,6 +140,7 @@ _iq gMaxCurrentSlope = _IQ(0.0);
 CTRL_Obj *controller_obj;
 #else
 CTRL_Obj ctrl;				//v1p7 format
+CTRL_Obj *controller_obj;
 #endif
 
 uint16_t gLEDcnt = 0;
@@ -134,9 +167,46 @@ _iq gTorque_Ls_Id_Iq_pu_to_Nm_sf;
 _iq gTorque_Flux_Iq_pu_to_Nm_sf;
 
 char buf[16];
+char returnBuf[32];
 int counter = 0;
+int rxIntCounter = 0;
+int commandReceived = 0;
+int commandStart = 0;
+
+int isWaitingTxFifoEmpty = 0;
+int txOffDelayCount = 2; // 1 count = 66.667us, 15 counts = 1ms
+int txOffDelayCounter = 0;
+int txOffDelayActive = 0;
+int setTxOff = 0;
+int sendSpeed = 0;
+
+//uint32_t slowCount = 30000; // 2s
+//uint32_t slowCounter = 0;
 
 void scia_init(void);
+void serialWrite(char *sendData, int length);
+
+void eepromWriteEnable();
+
+void eepromWriteDisable();
+
+void eepromErase(char addr);
+
+unsigned short eepromRead(char addr);
+
+void eepromWrite(char addr, unsigned short data);
+
+void eepromSend(char data);
+
+bool isOpenLoop = false;
+
+// define Angle Generate
+ANGLE_GEN_Handle angle_genHandle;
+ANGLE_GEN_Obj    angle_gen;
+
+// define Vs per Freq
+VS_FREQ_Handle vs_freqHandle;
+VS_FREQ_Obj    vs_freq;
 
 // **************************************************************************
 // the functions
@@ -191,11 +261,11 @@ void main(void)
   // initialize the controller
 #ifdef FAST_ROM_V1p6
   ctrlHandle = CTRL_initCtrl(ctrlNumber, estNumber);  		//v1p6 format (06xF and 06xM devices)
-  controller_obj = (CTRL_Obj *)ctrlHandle;
 #else
   ctrlHandle = CTRL_initCtrl(estNumber,&ctrl,sizeof(ctrl));	//v1p7 format default
 #endif
 
+  controller_obj = (CTRL_Obj *)ctrlHandle;
 
   {
     CTRL_Version version;
@@ -210,6 +280,15 @@ void main(void)
   // set the default controller parameters
   CTRL_setParams(ctrlHandle,&gUserParams);
 
+
+  // initialize the angle generate module
+  angle_genHandle = ANGLE_GEN_init(&angle_gen,sizeof(angle_gen));
+  ANGLE_GEN_setParams(angle_genHandle, gUserParams.iqFullScaleFreq_Hz, gUserParams.ctrlPeriod_sec);
+
+  // initialize the Vs per Freq module
+  vs_freqHandle = VS_FREQ_init(&vs_freq,sizeof(vs_freq));
+  VS_FREQ_setParams(vs_freqHandle,  gUserParams.iqFullScaleFreq_Hz, gUserParams.iqFullScaleVoltage_V, gUserParams.maxVsMag_pu);
+  VS_FREQ_setProfile(vs_freqHandle, USER_MOTOR_FREQ_LOW, USER_MOTOR_FREQ_HIGH, USER_MOTOR_VOLT_MIN, USER_MOTOR_VOLT_MAX);
 
   // initialize the Clarke modules
   clarkeHandle_I = CLARKE_init(&clarke_I,sizeof(clarke_I));
@@ -288,6 +367,13 @@ void main(void)
   gTorque_Flux_Iq_pu_to_Nm_sf = USER_computeTorque_Flux_Iq_pu_to_Nm_sf();
 
 
+
+  gMotorVars.Kp_spd = _IQ(4.0);
+  gMotorVars.MaxAccel_krpmps = _IQ(10.0);
+  gMotorVars.SpeedRef_krpm = _IQ(0.0);
+  gMotorVars.Flag_enableSys = true;
+  gMotorVars.Flag_enableOffsetcalc = false;
+
   for(;;)
   {
     // Waiting for enable system flag to be set
@@ -300,24 +386,156 @@ void main(void)
     while(gMotorVars.Flag_enableSys)
     {
 
-		if (SCI_getRxFifoStatus(sciHandle)) {
+    	/*if (isWaitingTxFifoEmpty && SCI_getRxFifoStatus(sciHandle) == SCI_FifoStatus_Empty) {
+    	//if (isWaitingTxFifoEmpty && SCI_txReady(sciHandle)) {
+    		isWaitingTxFifoEmpty = 0;
+    		txOffDelayActive = 1;
+    	}*/
+
+    	/*if (setTxOff) {
+    		setTxOff = 0;
+    		//GPIO_setLow(halHandle->gpioHandle,GPIO_Number_12);
+    		AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
+    	}*/
+
+    	//if (commandReceived) {
+    	if (counter == 8) {
+    		commandReceived = 0;
+
+    		//SerialCommand cmd;
+
+    		//memcpy(&cmd, buf + commandStart, 6);
+
+    		//if (cmd.id == boardId && cmd.type == 's') {
+    		if (buf[1] == boardId && buf[2] == 's') {
+    			long value = ((long)buf[3]) | ((long)buf[4] << 8) | ((long)buf[5] << 16) | ((long)buf[6] << 24);
+    			bool isRunIdentify = 1;
+
+#if (USER_MOTOR == propdrive_v2_2836_1200kv)
+    			if (value == _IQ(0.0)) {
+    			    isRunIdentify = 0;
+    			}
+    			else if (_IQabs(value) <= _IQ(0.2)) {
+    			    isOpenLoop = true;
+    			}
+    			else {
+    			    isOpenLoop = false;
+    			}
+
+#endif
+
+				gMotorVars.SpeedRef_krpm = value;
+				gMotorVars.Flag_Run_Identify = isRunIdentify;
+
+				/*returnBuf[0] = '<';
+				returnBuf[1] = boardId;
+				returnBuf[2] = 'd';
+
+				long returnValue = gMotorVars.Speed_krpm;
+
+				returnBuf[3] = returnValue;
+				returnBuf[4] = returnValue >> 8;
+				returnBuf[5] = returnValue >> 16;
+				returnBuf[6] = returnValue >> 24;
+				returnBuf[7] = '>';
+
+				serialWrite(returnBuf, 8);*/
+
+				//_IQtoa(returnBuf + 2, "%3.5f", gMotorVars.Speed_krpm);
+				//int n = strlen(returnBuf);
+				//returnBuf[n] = '\n';
+				//serialWrite(returnBuf, n + 1);
+
+				//long * intlocation = (long*)(&returnBuf[2]);
+				//*intlocation = gMotorVars.SpeedRef_krpm;
+				//*intlocation = 287392129l;
+			}
+
+    		/*if (buf[commandStart] == boardId && buf[commandStart + 1] == 's') {
+				gMotorVars.SpeedRef_krpm = _atoIQ(buf + commandStart + 2);
+				gMotorVars.Flag_Run_Identify = 1;
+
+				returnBuf[0] = boardId;
+				returnBuf[1] = 's';
+				_IQtoa(returnBuf + 2, "%3.5f", gMotorVars.Speed_krpm);
+				int n = strlen(returnBuf);
+				returnBuf[n] = '\n';
+				serialWrite(returnBuf, n + 1);
+			}*/
+
+    		commandStart = 0;
+    		counter = 0;
+    	}
+
+    	if (sendSpeed) {
+    		sendSpeed = 0;
+
+			if (buf[1] == boardId && buf[2] == 's') {
+				returnBuf[0] = '<';
+				returnBuf[1] = boardId;
+				returnBuf[2] = 'd';
+
+				long returnValue = gMotorVars.Speed_krpm;
+
+				returnBuf[3] = returnValue;
+				returnBuf[4] = returnValue >> 8;
+				returnBuf[5] = returnValue >> 16;
+				returnBuf[6] = returnValue >> 24;
+				returnBuf[7] = '>';
+
+				serialWrite(returnBuf, 8);
+			}
+		}
+
+    	/*if (SCI_txReady(sciHandle)) {
+			SCI_write(sciHandle, 'a');
+
+		}*/
+
+		/*while (SCI_getRxFifoStatus(sciHandle)) {
 			char rev_data = SCI_read(sciHandle);
 
 			if (rev_data == '\n') {
 				buf[counter] = '\0';
 				counter = 0;
 				//CTRL_setSpd_ref_krpm(ctrlHandle, _atoIQ(buf));
-				gMotorVars.SpeedRef_krpm = _atoIQ(buf);
+				if (buf[0] == boardId && buf[1] == 's') {
+					gMotorVars.SpeedRef_krpm = _atoIQ(buf + 2);
+					gMotorVars.Flag_Run_Identify = 1;
+
+					returnBuf[0] = boardId;
+					returnBuf[1] = 's';
+					_IQtoa(returnBuf + 2, "%3.5f", gMotorVars.Speed_krpm);
+					int n = strlen(returnBuf);
+					returnBuf[n] = '\n';
+					serialWrite(returnBuf, n + 1);
+				}
 			} else {
 				buf[counter] = rev_data;
 				counter++;
+
+				if (counter == 16) {
+					counter = 0;
+				}
 			}
 
-			/*if (SCI_txReady(sciHandle)) {
+			if (SCI_txReady(sciHandle)) {
+				usDelay(5000);
+				GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_12);
+				usDelay(5000);
 				SCI_write(sciHandle, rev_data);
 				//SCI_putDataNonBlocking(sciHandle, rev_data);
-			}*/
-		}
+				usDelay(5000);
+				GPIO_setLow(halHandle->gpioHandle,GPIO_Number_12);
+				usDelay(5000);
+			}
+		}*/
+
+    	//GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_12);
+
+		/*if (SCI_txReady(sciHandle)) {
+			SCI_write(sciHandle, '3');
+		}*/
 
       CTRL_Obj *obj = (CTRL_Obj *)ctrlHandle;
 
@@ -334,8 +552,7 @@ void main(void)
       CTRL_setFlag_enableOffset(ctrlHandle,gMotorVars.Flag_enableOffsetcalc);
 
 
-      if(CTRL_isError(ctrlHandle))
-      {
+      if(CTRL_isError(ctrlHandle)) {
         // set the enable controller flag to false
         CTRL_setFlag_enableCtrl(ctrlHandle,false);
 
@@ -344,9 +561,15 @@ void main(void)
 
         // disable the PWM
         HAL_disablePwm(halHandle);
-      }
-      else
-      {
+      } else if (voltageTooLow) {
+    	  // set the enable controller flag to false
+		  CTRL_setFlag_enableCtrl(ctrlHandle,false);
+
+		  // disable the PWM
+		  HAL_disablePwm(halHandle);
+
+		  gMotorVars.Flag_Run_Identify = false;
+      } else {
         // update the controller state
         bool flag_ctrlStateChanged = CTRL_updateState(ctrlHandle);
 
@@ -383,15 +606,39 @@ void main(void)
             }
             else
             {
-              uint_least16_t cnt;
-
               // set the current bias
-              for(cnt=0;cnt<3;cnt++)
-                HAL_setBias(halHandle,HAL_SensorType_Current,cnt,gAdcBiasI.value[cnt]);
+              HAL_setBias(halHandle,HAL_SensorType_Current,0,_IQ(I_A_offset));
+              HAL_setBias(halHandle,HAL_SensorType_Current,1,_IQ(I_B_offset));
+              HAL_setBias(halHandle,HAL_SensorType_Current,2,_IQ(I_C_offset));
 
               // set the voltage bias
-              for(cnt=0;cnt<3;cnt++)
-                HAL_setBias(halHandle,HAL_SensorType_Voltage,cnt,gAdcBiasV.value[cnt]);
+              HAL_setBias(halHandle,HAL_SensorType_Voltage,0,_IQ(V_A_offset));
+              HAL_setBias(halHandle,HAL_SensorType_Voltage,1,_IQ(V_B_offset));
+              HAL_setBias(halHandle,HAL_SensorType_Voltage,2,_IQ(V_C_offset));
+            }
+
+            // Return the bias value for currents
+            gMotorVars.I_bias.value[0] = HAL_getBias(halHandle,HAL_SensorType_Current,0);
+            gMotorVars.I_bias.value[1] = HAL_getBias(halHandle,HAL_SensorType_Current,1);
+            gMotorVars.I_bias.value[2] = HAL_getBias(halHandle,HAL_SensorType_Current,2);
+
+            // Return the bias value for voltages
+            gMotorVars.V_bias.value[0] = HAL_getBias(halHandle,HAL_SensorType_Voltage,0);
+            gMotorVars.V_bias.value[1] = HAL_getBias(halHandle,HAL_SensorType_Voltage,1);
+            gMotorVars.V_bias.value[2] = HAL_getBias(halHandle,HAL_SensorType_Voltage,2);
+
+            if (isOpenLoop) {
+                // set flag to disable speed controller
+                 CTRL_setFlag_enableSpeedCtrl(ctrlHandle, false);
+
+                 // set flag to disable current controller
+                 CTRL_setFlag_enableCurrentCtrl(ctrlHandle, false);
+            } else {
+                // set flag to disable speed controller
+                 CTRL_setFlag_enableSpeedCtrl(ctrlHandle, true);
+
+                 // set flag to disable current controller
+                 CTRL_setFlag_enableCurrentCtrl(ctrlHandle, true);
             }
 
             // enable the PWM
@@ -437,7 +684,7 @@ void main(void)
           gMotorVars.Ki_Idq = CTRL_getKi(ctrlHandle,CTRL_Type_PID_Id);
 
           // initialize the watch window kp and ki values with pre-calculated values
-          gMotorVars.Kp_spd = CTRL_getKp(ctrlHandle,CTRL_Type_PID_spd);
+          //gMotorVars.Kp_spd = CTRL_getKp(ctrlHandle,CTRL_Type_PID_spd);
           gMotorVars.Ki_spd = CTRL_getKi(ctrlHandle,CTRL_Type_PID_spd);
         }
 
@@ -458,6 +705,32 @@ void main(void)
         gCounter_updateGlobals = 0;
 
         updateGlobalVariables_motor(ctrlHandle);
+
+        if (voltageTooLow && gMotorVars.VdcBus_kV > lowVoltageThreshold) {
+        	voltageTooLow = 0;
+
+        	// Power restored, reset to start with fresh parameters
+        	// disable the PWM
+			HAL_disablePwm(halHandle);
+
+			// set the default controller parameters (Reset the control to re-identify the motor)
+			CTRL_setParams(ctrlHandle,&gUserParams);
+			gMotorVars.Flag_Run_Identify = false;
+        } else if (!voltageTooLow && gMotorVars.VdcBus_kV < lowVoltageThreshold) {
+        	voltageTooLow = 1;
+
+        	// Power lost, disable control
+			if (gMotorVars.Flag_Run_Identify) {
+				// disable the PWM
+				HAL_disablePwm(halHandle);
+
+				CTRL_setFlag_enableCtrl(ctrlHandle,false);
+
+				// set the default controller parameters (Reset the control to re-identify the motor)
+				CTRL_setParams(ctrlHandle,&gUserParams);
+				gMotorVars.Flag_Run_Identify = false;
+			}
+        }
       }
 
 
@@ -471,9 +744,105 @@ void main(void)
       CTRL_setFlag_enablePowerWarp(ctrlHandle,gMotorVars.Flag_enablePowerWarp);
 
 #ifdef DRV8301_SPI
+      //GPIO_setLow(halHandle->gpioHandle,GPIO_Number_19);
       HAL_writeDrvData(halHandle,&gDrvSpi8301Vars);
 
       HAL_readDrvData(halHandle,&gDrvSpi8301Vars);
+      //GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_19);
+
+      //usDelay(5000);
+
+      //if (writeEEPROM) {
+    	  /*writeEEPROM = 0;
+
+    	  GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
+
+			SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
+			SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+			SPI_write(halHandle->drv8301Handle->spiHandle,0b1001100000000000); //Enable write
+
+			usDelay(100);
+
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
+
+			usDelay(200);
+
+			GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
+
+			SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
+			SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+
+			usDelay(100);
+
+			SPI_write(halHandle->drv8301Handle->spiHandle,0xA000 | writeData >> 11);
+			SPI_write(halHandle->drv8301Handle->spiHandle, writeData << 5);
+
+			usDelay(300);
+
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
+
+			usDelay(20);
+
+			GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
+
+			while (!GPIO_getData(halHandle->gpioHandle, GPIO_Number_17)) {
+				usDelay(10);
+			}
+
+			usDelay(10);
+
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
+
+			usDelay(20);
+
+			GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34);
+
+			timeout = 0;
+
+			//const uint16_t data = 0;
+			volatile uint16_t WaitTimeOut = 0;
+			volatile SPI_FifoStatus_e RxFifoCnt = SPI_FifoStatus_Empty;
+
+			// reset the Rx fifo pointer to zero
+			SPI_resetRxFifo(halHandle->drv8301Handle->spiHandle);
+			SPI_enableRxFifo(halHandle->drv8301Handle->spiHandle);
+
+			// write the command
+			SPI_write(halHandle->drv8301Handle->spiHandle,0xC000);
+			SPI_write(halHandle->drv8301Handle->spiHandle,0x0000);
+
+			WaitTimeOut = 0;
+
+			// wait for two words to populate the RX fifo, or a wait timeout will occur
+			while((RxFifoCnt < SPI_FifoStatus_2_Words) && (WaitTimeOut < 0xffff)) {
+			  RxFifoCnt = SPI_getRxFifoStatus(halHandle->drv8301Handle->spiHandle);
+
+			  if (++WaitTimeOut > 0xfffe) {
+				  //halHandle->drv8301Handle->RxTimeOut = true;
+				  timeout = 1;
+			 }
+			}
+
+			eepromReadData = 0;
+
+			usDelay(1);
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34);
+
+			//eepromReadData = (0b0000000000011111 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) << 11;
+			//eepromReadData = eepromReadData | (0b1111111111100000 & SPI_readEmu(halHandle->drv8301Handle->spiHandle)) >> 5;
+			eepromReadData = SPI_readEmu(halHandle->drv8301Handle->spiHandle);
+			eepromReadData = SPI_readEmu(halHandle->drv8301Handle->spiHandle);*/
+
+    	  /*writeEEPROM = 0;
+
+    	  eepromWriteEnable();
+    	  usDelay(100);
+    	  eepromWrite(0x00, writeData);
+    	  usDelay(100);
+    	  eepromReadData = eepromRead(0x00);*/
+      //}
+
+
 #endif
 
     } // end of while(gFlag_enableSys) loop
@@ -490,6 +859,104 @@ void main(void)
 
 } // end of main() function
 
+void eepromWriteEnable() {
+	eepromSend(EE_EWEN);
+	usDelay(1);
+	GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+}
+
+void eepromWriteDisable() {
+	eepromSend(EE_EWDS);
+    usDelay(1);
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+}
+
+void eepromErase(char addr) {
+    eepromSend(EE_ERASE | addr);
+    usDelay(1);
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+    /** wait busy flag clear */
+    usDelay(1);     // tcs > 250ns @2.7V
+    GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34); //_eecs=1;
+    usDelay(1);     // tsv < 250ns @2.7V
+    //while(_eedo==0); // 0.1ms < twp < 10ms
+    while (!GPIO_read(halHandle->gpioHandle,GPIO_Number_17));
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+}
+
+unsigned short eepromRead(char addr) {
+    unsigned short data = 0;
+    signed char i = 15;
+    eepromSend(EE_READ | addr);
+    usDelay(1);
+
+    for (i = 15; i >= 0; i--) {
+    	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_18); //_eeck=1;
+    	usDelay(1);
+        GPIO_setLow(halHandle->gpioHandle,GPIO_Number_18); //_eeck=0;
+        //data = data | (_eedo<<i);
+        data = data | (GPIO_read(halHandle->gpioHandle,GPIO_Number_17) << i);
+        usDelay(1);
+    }
+
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+    return data;
+}
+
+void eepromWrite(char addr, unsigned short data) {
+    signed char i = 15;
+    eepromSend(EE_WRITE | addr);
+
+    usDelay(1);
+
+    for (i = 15; i >= 0; i--){
+        //_eedi = (int)( (data>>i)&0x0001 );
+        if ((data >> i) & 0x0001) {
+        	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_16);
+        } else {
+        	GPIO_setLow(halHandle->gpioHandle,GPIO_Number_16);
+        }
+
+        usDelay(1);
+		GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_18); //_eeck=1;
+		usDelay(1);
+		GPIO_setLow(halHandle->gpioHandle,GPIO_Number_18); //_eeck=0;
+    }
+
+    usDelay(50);
+
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+    /** wait busy flag clear */
+    usDelay(1);     // tcs > 250ns @2.7V
+    GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34); //_eecs=1;
+    usDelay(1);     // tsv < 250ns @2.7V
+    //while(_eedo==0); // 0.1ms < twp < 10ms
+    while (!GPIO_read(halHandle->gpioHandle,GPIO_Number_17));
+    GPIO_setLow(halHandle->gpioHandle,GPIO_Number_34); //_eecs=0;
+}
+
+void eepromSend(char data) {
+	signed char i = 7;
+	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_16); //_eedi=1;
+	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_34); //_eecs=1;     // fall is in function
+	usDelay(1);
+	GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_18); //_eeck=1;
+	usDelay(1);
+	GPIO_setLow(halHandle->gpioHandle,GPIO_Number_18); //_eeck=0;
+	while(i>=0){
+		//_eedi = (data>>i)&0x01;
+		if ((data >> i) & 0x0001) {
+			GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_16);
+		} else {
+			GPIO_setLow(halHandle->gpioHandle,GPIO_Number_16);
+		}
+		i--;
+		usDelay(1);
+		GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_18); //_eeck=1;
+		usDelay(1);
+		GPIO_setLow(halHandle->gpioHandle,GPIO_Number_18); //_eeck=0;
+	}
+}
 
 interrupt void mainISR(void)
 {
@@ -504,7 +971,6 @@ interrupt void mainISR(void)
   MATH_vec2 Vab_out_pu;
   MATH_vec2 phasor;
 
-
   // toggle status LED
   if(gLEDcnt++ > (uint_least32_t)(USER_ISR_FREQ_Hz / LED_BLINK_FREQ_Hz))
   {
@@ -512,6 +978,11 @@ interrupt void mainISR(void)
     gLEDcnt = 0;
   }
 
+  /*if (slowCounter++ > slowCount) {
+	  slowCounter = 0;
+	  AIO_toggle(halHandle->gpioHandle,AIO_Number_4);
+	  AIO_toggle(halHandle->gpioHandle,AIO_Number_6);
+  }*/
 
   // acknowledge the ADC interrupt
   HAL_acqAdcInt(halHandle,ADC_IntNumber_1);
@@ -520,7 +991,95 @@ interrupt void mainISR(void)
   // convert the ADC data
   HAL_readAdcData(halHandle,&gAdcData);
 
-  {
+  if (isOpenLoop) {
+    uint_least16_t count_isr = CTRL_getCount_isr(ctrlHandle);
+    uint_least16_t numIsrTicksPerCtrlTick = CTRL_getNumIsrTicksPerCtrlTick(ctrlHandle);
+
+    // if needed, run the controller
+    if (count_isr >= numIsrTicksPerCtrlTick) {
+        CTRL_State_e ctrlState = CTRL_getState(ctrlHandle);
+
+        // reset the isr count
+        CTRL_resetCounter_isr(ctrlHandle);
+
+        // increment the state counter
+        CTRL_incrCounter_state(ctrlHandle);
+
+        // increment the trajectory count
+        CTRL_incrCounter_traj(ctrlHandle);
+
+        // run the appropriate controller
+        if(ctrlState == CTRL_State_OnLine)
+          {
+            // increment the current count
+            CTRL_incrCounter_current(ctrlHandle);
+
+            // increment the speed count
+            CTRL_incrCounter_speed(ctrlHandle);
+
+            MATH_vec2 phasor;
+
+           // run Clarke transform on current
+           CLARKE_run(controller_obj->clarkeHandle_I,&gAdcData.I,CTRL_getIab_in_addr(ctrlHandle));
+
+           // run Clarke transform on voltage
+           CLARKE_run(controller_obj->clarkeHandle_V,&gAdcData.V,CTRL_getVab_in_addr(ctrlHandle));
+
+           controller_obj->speed_ref_pu = TRAJ_getIntValue(controller_obj->trajHandle_spd);
+
+           //controller_obj->speed_ref_pu = _IQ(0.01);
+
+           //
+           ANGLE_GEN_run(angle_genHandle, controller_obj->speed_ref_pu);
+           VS_FREQ_run(vs_freqHandle, controller_obj->speed_ref_pu);
+
+           // generate the motor electrical angle
+           controller_obj->angle_pu = ANGLE_GEN_getAngle_pu(angle_genHandle);
+
+           controller_obj->Vdq_out.value[0] = vs_freq.Vdq_out.value[0];
+           controller_obj->Vdq_out.value[1] = vs_freq.Vdq_out.value[1];
+
+           // compute the sin/cos phasor
+           CTRL_computePhasor(controller_obj->angle_pu,&phasor);
+
+           // set the phasor in the Park transform
+           PARK_setPhasor(controller_obj->parkHandle,&phasor);
+
+           // run the Park transform
+           PARK_run(controller_obj->parkHandle,CTRL_getIab_in_addr(ctrlHandle),CTRL_getIdq_in_addr(ctrlHandle));
+
+
+           // set the phasor in the inverse Park transform
+           IPARK_setPhasor(controller_obj->iparkHandle,&phasor);
+
+           // run the inverse Park module
+           IPARK_run(controller_obj->iparkHandle,CTRL_getVdq_out_addr(ctrlHandle),CTRL_getVab_out_addr(ctrlHandle));
+
+           // run the space Vector Generator (SVGEN) module
+           SVGEN_run(controller_obj->svgenHandle,CTRL_getVab_out_addr(ctrlHandle),&(gPwmData.Tabc));
+          }
+        else if(ctrlState == CTRL_State_OffLine)
+          {
+            // run the offline controller
+            CTRL_runOffLine(ctrlHandle,halHandle,&gAdcData,&gPwmData);
+          }
+        else if(ctrlState == CTRL_State_Idle)
+          {
+            // set all pwm outputs to zero
+            gPwmData.Tabc.value[0] = _IQ(0.0);
+            gPwmData.Tabc.value[1] = _IQ(0.0);
+            gPwmData.Tabc.value[2] = _IQ(0.0);
+          }
+      }
+    else
+      {
+        // increment the isr count
+        CTRL_incrCounter_isr(ctrlHandle);
+      }
+
+    CTRL_setup(ctrlHandle);
+
+  } else {
     uint_least16_t count_isr = CTRL_getCount_isr(ctrlHandle);
     uint_least16_t numIsrTicksPerCtrlTick = CTRL_getNumIsrTicksPerCtrlTick(ctrlHandle);
 
@@ -621,6 +1180,49 @@ interrupt void mainISR(void)
   // write the PWM compare values
   HAL_writePwmData(halHandle,&gPwmData);
 
+  /*if (txOffDelayActive) {
+	  if (++txOffDelayCounter == txOffDelayCount) {
+		  txOffDelayCounter = 0;
+		  txOffDelayActive = 0;
+		  //setTxOff = 1;
+		  AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
+	  }
+  }*/
+
+  /*if (txOffDelayActive) {
+  	  txOffDelayActive = 0;
+  	  AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
+  }*/
+
+  /*if (txOffDelayActive) {
+    			  txOffDelayActive = 0;
+    			  AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
+    		}*/
+
+  if (txOffDelayActive) {
+  	  if (++txOffDelayCounter == txOffDelayCount) {
+  		  txOffDelayCounter = 0;
+  		  txOffDelayActive = 0;
+  		  //setTxOff = 1;
+  		  AIO_setLow(halHandle->gpioHandle,AIO_Number_6);
+  	  }
+    }
+
+  if (isWaitingTxFifoEmpty && SCI_getRxFifoStatus(sciHandle) == SCI_FifoStatus_Empty) {
+	//if (isWaitingTxFifoEmpty && SCI_txReady(sciHandle)) {
+		isWaitingTxFifoEmpty = 0;
+		txOffDelayActive = 1;
+	}
+
+  /*if (writeEEPROM) {
+	  writeEEPROM = 0;
+
+	  eepromWriteEnable();
+	  usDelay(100);
+	  eepromWrite(0x00, writeData);
+	  usDelay(100);
+	  eepromReadData = eepromRead(0x00);
+  }*/
 
   return;
 } // end of mainISR() function
@@ -747,14 +1349,69 @@ void updateKpKiGains(CTRL_Handle handle)
 } // end of updateKpKiGains() function
 
 interrupt void SCI_RX_ISR(void) {
-  char rev_data = 0 ;
-  if (SCI_rxDataReady(sciHandle) == 1) {
-    rev_data = SCI_read(sciHandle);
-  }
-  SCI_clearRxFifoOvf(sciHandle);
-  SCI_clearRxFifoInt(sciHandle);
+	rxIntCounter++;
 
-  PIE_clearInt(halHandle->pieHandle, PIE_GroupNumber_9);
+	while (SCI_rxDataReady(sciHandle) == 1) {
+		char c = SCI_read(sciHandle);
+
+		//buf[counter] = c;
+		//counter++;
+
+		if (counter < 8) {
+			//commandReceived = 1;
+
+			switch (counter) {
+			case 0:
+				if (c == '<') {
+					buf[counter] = c;
+					counter++;
+				} else {
+					counter = 0;
+				}
+				break;
+			case 1:
+				if (c == boardId) {
+					buf[counter] = c;
+					counter++;
+				} else {
+					counter = 0;
+				}
+				break;
+			case 2:
+				if (c == 's') {
+					buf[counter] = c;
+					counter++;
+					sendSpeed = 1;
+				} else {
+					counter = 0;
+				}
+				break;
+			case 3:
+			case 4:
+			case 5:
+			case 6:
+				buf[counter] = c;
+				counter++;
+				break;
+			case 7:
+				if (c == '>') {
+					buf[counter] = c;
+					counter++;
+					//sendSpeed = 1;
+				} else {
+					counter = 0;
+				}
+				break;
+			default:
+				counter = 0;
+			}
+		}
+	}
+
+	SCI_clearRxFifoOvf(sciHandle);
+	SCI_clearRxFifoInt(sciHandle);
+
+	PIE_clearInt(halHandle->pieHandle, PIE_GroupNumber_9);
 }
 
 void scia_init() {
@@ -766,22 +1423,29 @@ void scia_init() {
 	SCI_setCharLength(sciHandle, SCI_CharLength_8_Bits);
 	SCI_setMode(sciHandle, SCI_Mode_IdleLine);
 	//SCI_setPriority(sciHandle, SCI_Priority_FreeRun);
+	//SCI_setTxDelay(sciHandle, 255);
 
 	SCI_disableRxErrorInt(sciHandle);
 	SCI_disable(sciHandle);
 	SCI_disableTxWake(sciHandle);
 	SCI_disableSleep(sciHandle);
 	SCI_enableRx(sciHandle);
+	SCI_enableRxFifo(sciHandle);
 	SCI_enableTx(sciHandle);
 	SCI_enableTxFifo(sciHandle);
-	SCI_enableTxFifoEnh(sciHandle);
+	//SCI_enableTxFifoEnh(sciHandle);
+
+	SCI_setBaudRate(sciHandle, (SCI_BaudRate_e)49);
+
+	SCI_clearRxFifoOvf(sciHandle);
+	SCI_clearRxFifoInt(sciHandle);
 
 	SCI_enableRxInt(sciHandle);
-	SCI_enableTxInt(sciHandle);
+	//SCI_enableTxInt(sciHandle);
 
-	SCI_setBaudRate(sciHandle, 780);
-
+	/*ENABLE_PROTECTED_REGISTER_WRITE_MODE;
 	halHandle->pieHandle->SCIRXINTA = &SCI_RX_ISR;
+	DISABLE_PROTECTED_REGISTER_WRITE_MODE;*/
 
 	SCI_enable(sciHandle);
 
@@ -790,6 +1454,23 @@ void scia_init() {
 
     // enable CPU interrupt
     CPU_enableInt(halHandle->cpuHandle, CPU_IntNumber_9);
+}
+
+void serialWrite(char *sendData, int length) {
+	int i = 0;
+
+	//GPIO_setHigh(halHandle->gpioHandle,GPIO_Number_12);
+	AIO_setHigh(halHandle->gpioHandle,AIO_Number_6);
+
+	while (i < length) {
+		if (SCI_txReady(sciHandle)) {
+			SCI_write(sciHandle, sendData[i]);
+			i++;
+		}
+	}
+
+	//GPIO_setLow(halHandle->gpioHandle,GPIO_Number_12);
+	isWaitingTxFifoEmpty = 1;
 }
 
 //@} //defgroup

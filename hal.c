@@ -545,8 +545,8 @@ void HAL_enablePwmInt(HAL_Handle handle)
 
 void HAL_setupFaults(HAL_Handle handle)
 {
-  HAL_Obj *obj = (HAL_Obj *)handle;
-  uint_least8_t cnt;
+  //HAL_Obj *obj = (HAL_Obj *)handle;
+  //uint_least8_t cnt;
 
 
   // Configure Trip Mechanism for the Motor control software
@@ -986,15 +986,25 @@ void HAL_setupGpios(HAL_Handle handle)
 
   // SPI_SDI if JP4 is soldered, No Connection if JP4 is not soldered
   GPIO_setMode(obj->gpioHandle,GPIO_Number_16,GPIO_16_Mode_SPISIMOA);
+  /*GPIO_setMode(obj->gpioHandle,GPIO_Number_16,GPIO_16_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_16,GPIO_Direction_Output);
+  GPIO_setLow(obj->gpioHandle,GPIO_Number_16);*/
 
   // SPI_SDO if JP6 is soldered, No Connection if JP6 is not soldered
   GPIO_setMode(obj->gpioHandle,GPIO_Number_17,GPIO_17_Mode_SPISOMIA);
+  /*GPIO_setMode(obj->gpioHandle,GPIO_Number_17,GPIO_17_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_17,GPIO_Direction_Input);*/
 
   // SPI_CLK
   GPIO_setMode(obj->gpioHandle,GPIO_Number_18,GPIO_18_Mode_SPICLKA);
+  /*GPIO_setMode(obj->gpioHandle,GPIO_Number_18,GPIO_18_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_18,GPIO_Direction_Output);*/
 
   // SPI_SCS
   GPIO_setMode(obj->gpioHandle,GPIO_Number_19,GPIO_19_Mode_SPISTEA_NOT);
+  /*GPIO_setMode(obj->gpioHandle,GPIO_Number_19,GPIO_19_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_19,GPIO_Direction_Output);
+  GPIO_setHigh(obj->gpioHandle,GPIO_Number_19);*/
 
   // RX
   GPIO_setPullUp(obj->gpioHandle, GPIO_Number_28, GPIO_PullUp_Enable);
@@ -1011,14 +1021,31 @@ void HAL_setupGpios(HAL_Handle handle)
   // OCTWn
   GPIO_setMode(obj->gpioHandle,GPIO_Number_33,GPIO_33_Mode_GeneralPurpose);
 
-  // No Connection
+  // SCS2
   GPIO_setMode(obj->gpioHandle,GPIO_Number_34,GPIO_34_Mode_GeneralPurpose);
+  GPIO_setDirection(obj->gpioHandle,GPIO_Number_34,GPIO_Direction_Output);
+  GPIO_setLow(obj->gpioHandle,GPIO_Number_34);
 
   // JTAG
   GPIO_setMode(obj->gpioHandle,GPIO_Number_35,GPIO_35_Mode_JTAG_TDI);
   GPIO_setMode(obj->gpioHandle,GPIO_Number_36,GPIO_36_Mode_JTAG_TMS);
   GPIO_setMode(obj->gpioHandle,GPIO_Number_37,GPIO_37_Mode_JTAG_TDO);
   GPIO_setMode(obj->gpioHandle,GPIO_Number_38,GPIO_38_Mode_JTAG_TCK);
+
+  // AIO
+  /*AIO_setMode(obj->gpioHandle,AIO_Number_4,AIO_Enabled);
+  AIO_setMode(obj->gpioHandle,AIO_Number_6,AIO_Enabled);
+
+  AIO_setDirection(obj->gpioHandle,AIO_Number_4,GPIO_Direction_Output);
+  AIO_setDirection(obj->gpioHandle,AIO_Number_6,GPIO_Direction_Output);
+
+  AIO_setLow(obj->gpioHandle,AIO_Number_4);
+  AIO_setHigh(obj->gpioHandle,AIO_Number_6);*/
+
+  // DE RS485
+  AIO_setMode(obj->gpioHandle,AIO_Number_6,AIO_Enabled);
+  AIO_setDirection(obj->gpioHandle,AIO_Number_6,GPIO_Direction_Output);
+  AIO_setLow(obj->gpioHandle,AIO_Number_6);
 
   return;
 }  // end of HAL_setupGpios() function

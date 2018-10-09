@@ -211,6 +211,8 @@ typedef struct _MOTOR_Vars_t_
 //!
 interrupt void mainISR(void);
 
+interrupt void SCI_RX_ISR(void);
+
 
 //! \brief     Updates the global motor variables 
 //! 
