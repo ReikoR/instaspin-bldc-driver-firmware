@@ -61,17 +61,17 @@
 // **************************************************************************
 // the defines
 
-#define SET_SPEED '1'
-#define GET_SPEED '2'
-#define SET_ACCEL '3'
-#define ENABLE_SYS '4'
-#define DISABLE_SYS '5'
-#define GET_ID '6'
-#define AUTO_STOP_ON '7'
-#define AUTO_STOP_OFF '8'
+#define SET_SPEED 1
+#define GET_SPEED 2
+#define SET_ACCEL 3
+#define ENABLE_SYS 4
+#define DISABLE_SYS 5
+#define GET_ID 6
+#define AUTO_STOP_ON 7
+#define AUTO_STOP_OFF 8
 
 #define UART_REPLY_ISR (int)150
-#define AUTO_STOP_ISR (int)15000
+#define AUTO_STOP_ISR (int)24000
 
 //! \brief Defines the number of main iterations before global variables are updated
 //!

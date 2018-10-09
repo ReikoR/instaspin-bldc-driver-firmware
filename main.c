@@ -133,7 +133,7 @@ _iq gTorque_Ls_Id_Iq_pu_to_Nm_sf;
 
 _iq gTorque_Flux_Iq_pu_to_Nm_sf;
 
-char devId = '0';
+char devId = 0;
 bool failsafe = 1;
 
 char buf[16];
@@ -294,9 +294,6 @@ void main(void)
   gTorque_Ls_Id_Iq_pu_to_Nm_sf = USER_computeTorque_Ls_Id_Iq_pu_to_Nm_sf();
   gTorque_Flux_Iq_pu_to_Nm_sf = USER_computeTorque_Flux_Iq_pu_to_Nm_sf();
 
-  gMotorVars.Flag_enableSys = 1;
-  gMotorVars.Flag_Run_Identify = 1;
-
 
   for(;;)
   {
@@ -316,7 +313,7 @@ void main(void)
 			if (rev_data == '\n') {
 				buf[counter] = '\0';
 				counter = 0;
-				parseCommand(buf);
+				gMotorVars.SpeedRef_krpm = _atoIQ(buf);
 			} else {
 				buf[counter] = rev_data;
 				counter++;
@@ -778,37 +775,37 @@ interrupt void SCI_RX_ISR(void) {
 
 void parseCommand(char *command){
 	if(command[0]==devId){
-		if(command[1]==SET_SPEED){
-			gMotorVars.SpeedRef_krpm = getCmdValue(command);
-			isr_failsafe_count = 0;
-			}
-		else if(command[1]==GET_SPEED){
+		if(command[1]==GET_SPEED){
 			char spdBuf[10];
 			_IQ24toa(spdBuf, "%3.5f", gMotorVars.Speed_krpm);
 			//Return speed to master in kRPM format
+		}
+		if(command[1]==SET_SPEED){
+			gMotorVars.SpeedRef_krpm = getCmdValue(command);
+			isr_failsafe_count = 0;
 			//Read the follotellwing chars until the end, translate to iq_val
 		}
-		else if(command[1]==SET_ACCEL){
+		if(command[1]==SET_ACCEL){
 			gMotorVars.MaxAccel_krpmps = getCmdValue(command);
 			//Set the maximum acceleration rate.
 		}
-		else if(command[1]==GET_ID){
+		if(command[1]==GET_ID){
 			char idBuf[10];
 			ltoa((long)devId, idBuf);
 			//Read current ID and return.
 		}
-		else if(command[1]==ENABLE_SYS){
+		if(command[1]==ENABLE_SYS){
 			gMotorVars.Flag_enableSys = 1;
 			gMotorVars.Flag_Run_Identify = 1;
 		}
-		else if(command[1]==DISABLE_SYS){
+		if(command[1]==DISABLE_SYS){
 			gMotorVars.Flag_Run_Identify = 0;
 			gMotorVars.SpeedRef_krpm = _atoIQ("0");
 		}
-		else if(command[1]==AUTO_STOP_ON){
+		if(command[1]==AUTO_STOP_ON){
 			failsafe = 1;
 		}
-		else if(command[1]==AUTO_STOP_OFF){
+		if(command[1]==AUTO_STOP_OFF){
 			failsafe = 0;
 		}
 	}
@@ -818,7 +815,7 @@ void parseCommand(char *command){
 _iq getCmdValue(char *command){
 	char buffer[14];
 	memcpy(buffer, command[2], 14);
-	return _atoIQ(command+2);
+	return _atoIQ(buffer);
 }
 
 void scia_init() {
